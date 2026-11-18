@@ -3,17 +3,67 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Block Dodger</title>
+<title>SOLMARINA — Open-World Crime Game</title>
 <style>
-  html, body { margin: 0; height: 100%; overflow: hidden; background: #11141b; }
+  html, body { margin: 0; height: 100%; overflow: hidden; background: #0e1420; font-family: system-ui, -apple-system, "Segoe UI", sans-serif; }
   #game { position: fixed; inset: 0; width: 100%; height: 100%; display: block; touch-action: none; }
-  /* Read aloud, never shown: the status line screen readers announce. */
   #status { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
+  .panel { position: fixed; color: #f2f5f8; text-shadow: 0 1px 3px rgba(0,0,0,.7); pointer-events: none; z-index: 5; }
+  #top-left { top: 14px; left: 16px; }
+  #cash { font-size: 28px; font-weight: 800; color: #7dff9a; }
+  #health-row { margin-top: 6px; display: flex; align-items: center; gap: 8px; }
+  #health-bar { width: 150px; height: 12px; background: rgba(0,0,0,.55); border: 1px solid rgba(255,255,255,.35); border-radius: 6px; overflow: hidden; }
+  #health-fill { height: 100%; width: 100%; background: #2ecc71; }
+  #health-text { font-size: 13px; font-weight: 700; }
+  #ammo { margin-top: 6px; font-size: 14px; font-weight: 600; color: #ffd97a; }
+  #objective { top: 14px; left: 50%; transform: translateX(-50%); text-align: center; background: rgba(0,0,0,.5); border: 1px solid rgba(255,200,97,.6); border-radius: 8px; padding: 8px 18px; max-width: 520px; }
+  #objective-title { font-size: 17px; font-weight: 800; color: #ffc861; }
+  #objective-text { font-size: 14px; margin-top: 2px; }
+  #stars { top: 86px; left: 50%; transform: translateX(-50%); font-size: 26px; letter-spacing: 4px; color: #8899aa; }
+  #minimap { position: fixed; top: 14px; right: 16px; width: 180px; height: 180px; border: 2px solid rgba(255,255,255,.5); border-radius: 8px; background: #16202b; z-index: 5; }
+  #map-label { position: fixed; top: 198px; right: 16px; color: #dfe8ef; font-size: 12px; font-weight: 700; letter-spacing: 2px; text-shadow: 0 1px 3px rgba(0,0,0,.8); z-index: 5; }
+  #toast { top: 132px; left: 50%; transform: translateX(-50%); font-size: 16px; font-weight: 700; color: #fff; background: rgba(0,0,0,.6); border-radius: 6px; padding: 8px 16px; opacity: 0; transition: opacity .3s; max-width: 640px; text-align: center; }
+  #prompt { bottom: 96px; left: 50%; transform: translateX(-50%); font-size: 16px; font-weight: 700; color: #fff; background: rgba(0,0,0,.6); border-radius: 6px; padding: 7px 14px; opacity: 0; }
+  #speed { bottom: 24px; right: 22px; font-size: 26px; font-weight: 800; color: #fff; opacity: 0; }
+  #crosshair { top: 50%; left: 50%; width: 14px; height: 14px; margin: -7px 0 0 -7px; border: 2px solid rgba(255,255,255,.9); border-radius: 50%; opacity: 0; }
+  #hint { bottom: 14px; left: 16px; font-size: 12px; color: rgba(255,255,255,.75); }
+  #menu { position: fixed; inset: 0; display: flex; align-items: center; justify-content: center; background: rgba(8, 14, 24, .72); z-index: 10; }
+  #menu-card { background: #141c2b; border: 1px solid #ffc861; border-radius: 14px; padding: 34px 44px; max-width: 620px; text-align: center; color: #eef1f5; box-shadow: 0 20px 60px rgba(0,0,0,.6); }
+  #menu-title { font-size: 44px; font-weight: 900; letter-spacing: 4px; color: #ffc861; margin: 0 0 6px; }
+  #menu-text { font-size: 15px; line-height: 1.55; color: #c6d2de; }
+  #menu-buttons { margin-top: 24px; display: flex; gap: 12px; justify-content: center; }
+  #menu-buttons button { font-size: 17px; font-weight: 700; padding: 12px 26px; border: none; border-radius: 8px; background: #ffc861; color: #1a1405; cursor: pointer; }
+  #menu-buttons button:hover { background: #ffd98a; }
 </style>
 </head>
 <body>
-<canvas id="game" aria-label="Block Dodger: move the paddle left and right to dodge falling blocks and catch coins"></canvas>
+<canvas id="game" aria-label="SOLMARINA: an open-world crime game in a sun-soaked coastal city"></canvas>
 <p id="status" role="status" aria-live="polite"></p>
+
+<div id="top-left" class="panel">
+  <div id="cash">$150</div>
+  <div id="health-row"><div id="health-bar"><div id="health-fill"></div></div><span id="health-text">100</span></div>
+  <div id="ammo">Ammo 12 / 12</div>
+</div>
+<div id="objective" class="panel"><div id="objective-title">SOLMARINA</div><div id="objective-text">Welcome to the city.</div></div>
+<div id="stars" class="panel">☆☆☆☆☆</div>
+<canvas id="minimap" width="180" height="180"></canvas>
+<div id="map-label">SOLMARINA</div>
+<div id="toast" class="panel"></div>
+<div id="prompt" class="panel"></div>
+<div id="speed" class="panel"></div>
+<div id="crosshair" class="panel"></div>
+<div id="hint" class="panel">WASD move · Shift run · E enter car · F punch · Click shoot · R reload · Drag mouse camera · P pause · M mute</div>
+
+<div id="menu"><div id="menu-card">
+  <h1 id="menu-title">SOLMARINA</h1>
+  <p id="menu-text"></p>
+  <div id="menu-buttons"></div>
+</div></div>
+
+<script type="importmap">
+{ "imports": { "three": "./vendor/three.min.js" } }
+</script>
 <script type="module" src="./src/main.js"></script>
 </body>
 </html>

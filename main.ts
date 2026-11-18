@@ -1,16 +1,17 @@
-// A working gta6-01 entry (Node 22, standard library only): the game is this directory's
-// game/ folder, plain static files a desktop browser loads offline (game/index.html and its ES
-// modules, no library and no network request), and the program hands it in. It copies game/ and
-// screenshots/ from beside this file to /output and writes /output/dossier.json, the summary the
-// judge reads, with the vendored make.fun library. Only the plumbing, not an open world: Block
-// Dodger, a plain 2D canvas game where a paddle dodges falling blocks and catches coins, with a
-// title screen, score, lives and levels, game over and restart, flat colours and no sound. Build
-// your own open-world crime game in its place (three.js or any library you vendor under game/),
-// put your 3 or 4 PNG or JPEG screenshots in screenshots/ (the first by name is the cover) and run it.
+// SOLMARINA hands itself in (Node 22, standard library only).
 //
-// Serve it locally with `node serve.ts`, then open http://localhost:8080.
-// Outside the grader's container, MAKEFUN_OUTPUT_DIR stands in for /output:
+// The game lives in game/ as plain static files — an index.html plus ES
+// modules, a vendored three.js, no build step and no network request — and
+// screenshots/ holds the renders taken from the running game. This program
+// copies both folders into the grader's output directory and writes
+// dossier.json there with the vendored make.fun library, which is the summary
+// the judge reads. It does no game logic of its own: the city, the missions
+// and the screenshots are all produced by the files it copies.
+//
+// Run it outside the grader with MAKEFUN_OUTPUT_DIR standing in for /output:
 //   mkdir -p out && MAKEFUN_OUTPUT_DIR=out node main.ts
+// The program runs twice and must write identical bytes both times; copying
+// files and building the dossier from them is deterministic, so it does.
 
 import { cpSync, existsSync, mkdirSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
@@ -25,10 +26,10 @@ cpSync(join(here, 'game'), join(out, 'game'), { recursive: true });
 mkdirSync(join(out, 'screenshots'), { recursive: true });
 if (existsSync(join(here, 'screenshots'))) cpSync(join(here, 'screenshots'), join(out, 'screenshots'), { recursive: true });
 
-// The scorer's own caps (reference/gate.json): only text_max_bytes shapes the bytes; the others refuse an entry the
-// scorer would refuse (more than 4 screenshots or one over 256 KiB; more than 993 files in game/ or 48 MiB of game
-// files, in all, or a path under game/ over 1000 bytes: game/ counts beside /output's own 1000-entry cap, its
-// screenshots/ and dossier.json).
+// The scorer's caps, mirrored here so a local run refuses what the sealed
+// scorer would refuse: at most 4 screenshots, each at most 256 KiB; game/ at
+// most 993 files and 48 MiB in all, with no path over 1000 bytes. Only
+// text_max_bytes shapes the dossier's bytes; the rest guard the entry.
 writeFileSync(
   join(out, 'dossier.json'),
   buildDossier(out, {

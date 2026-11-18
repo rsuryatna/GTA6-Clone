@@ -1,53 +1,83 @@
-// Keyboard and pointer input. Held keys give a steering direction; one-shot presses (start or
-// restart, pause) are queued as bit flags and taken once by the loop, so a press between two
-// frames is never lost and never counted twice.
+// Keyboard and mouse input for SOLMARINA.
+// Tracks held keys, mouse-drag camera deltas, wheel zoom and clicks, and
+// offers edge-triggered "just pressed" queries the game loop consumes.
 
-export const ACTION_CONFIRM = 1;
-export const ACTION_PAUSE = 2;
+export function createInput(canvas) {
+  const keys = new Set();
+  const justPressed = new Set();
+  let mouseDX = 0;
+  let mouseDY = 0;
+  let wheelDelta = 0;
+  let clicked = false;
+  let dragging = false;
+  let lastX = 0;
+  let lastY = 0;
 
-const LEFT = new Set(['ArrowLeft', 'KeyA']);
-const RIGHT = new Set(['ArrowRight', 'KeyD']);
-const CONFIRM = new Set(['Space', 'Enter']);
-const PAUSE = new Set(['KeyP', 'Escape']);
+  const CODE_ALIASES = { KeyW: 'up', ArrowUp: 'up', KeyS: 'down', ArrowDown: 'down' };
 
-export function createInput(target) {
-  let left = false;
-  let right = false;
-  let actions = 0;
+  function codeOf(event) {
+    return CODE_ALIASES[event.code] ?? event.code;
+  }
 
   window.addEventListener('keydown', (event) => {
-    if (LEFT.has(event.code)) left = true;
-    else if (RIGHT.has(event.code)) right = true;
-    else if (CONFIRM.has(event.code)) {
-      if (!event.repeat) actions |= ACTION_CONFIRM;
-    } else if (PAUSE.has(event.code)) {
-      if (!event.repeat) actions |= ACTION_PAUSE;
-    } else return;
+    if (event.repeat) return;
+    const code = codeOf(event);
+    keys.add(code);
+    justPressed.add(code);
+    if (['Space', 'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'].includes(event.code)) {
+      event.preventDefault();
+    }
+  });
+  window.addEventListener('keyup', (event) => keys.delete(codeOf(event)));
+  window.addEventListener('blur', () => keys.clear());
+
+  canvas.addEventListener('mousedown', (event) => {
+    dragging = true;
+    lastX = event.clientX;
+    lastY = event.clientY;
+    clicked = true;
+  });
+  window.addEventListener('mouseup', () => { dragging = false; });
+  window.addEventListener('mousemove', (event) => {
+    if (!dragging) return;
+    mouseDX += event.clientX - lastX;
+    mouseDY += event.clientY - lastY;
+    lastX = event.clientX;
+    lastY = event.clientY;
+  });
+  canvas.addEventListener('wheel', (event) => {
+    wheelDelta += event.deltaY;
     event.preventDefault();
-  });
-  window.addEventListener('keyup', (event) => {
-    if (LEFT.has(event.code)) left = false;
-    else if (RIGHT.has(event.code)) right = false;
-  });
-  // A key released while the tab is hidden never sends keyup: let go of everything on blur.
-  window.addEventListener('blur', () => {
-    left = false;
-    right = false;
-  });
-  target.addEventListener('pointerdown', () => {
-    actions |= ACTION_CONFIRM;
-  });
+  }, { passive: false });
+  canvas.addEventListener('contextmenu', (event) => event.preventDefault());
 
   return {
-    /** -1 for left, 1 for right, 0 for neither or both. */
-    direction() {
-      return (right ? 1 : 0) - (left ? 1 : 0);
+    isDown(code) { return keys.has(code); },
+    wasPressed(code) { return justPressed.has(code); },
+    // Movement axes, -1..1. Forward is W / Up, strafe is A / D.
+    moveForward() {
+      return (keys.has('up') ? 1 : 0) - (keys.has('down') ? 1 : 0);
     },
-    /** The one-shot presses since the last call, as ACTION_* flags. */
-    takeActions() {
-      const taken = actions;
-      actions = 0;
-      return taken;
+    moveStrafe() {
+      return (keys.has('KeyD') ? 1 : 0) - (keys.has('KeyA') ? 1 : 0);
     },
+    takeMouseDelta() {
+      const d = { dx: mouseDX, dy: mouseDY };
+      mouseDX = 0;
+      mouseDY = 0;
+      return d;
+    },
+    takeWheel() {
+      const w = wheelDelta;
+      wheelDelta = 0;
+      return w;
+    },
+    takeClick() {
+      const c = clicked;
+      clicked = false;
+      return c;
+    },
+    // Called at the end of every frame: edge triggers live for one frame only.
+    endFrame() { justPressed.clear(); },
   };
 }
