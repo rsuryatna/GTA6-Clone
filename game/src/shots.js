@@ -1,3 +1,6 @@
+// NOTE: unused by SOLMARINA — the entry's screenshot presets live in
+// main.js (stageShot). This is the kit starter's shot module, kept for
+// reference; it is not imported.
 // The screenshot scenes behind ?shot=start|play|end. Each one plays the real rules forward from a
 // fresh world for a fixed number of steps, steered by a simple autopilot (look ahead each way the
 // paddle could move, keep clear of blocks, chase the lowest coin when that is safe), so the frame

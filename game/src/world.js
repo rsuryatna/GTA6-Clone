@@ -27,6 +27,8 @@ export function buildWorld(scene) {
   scene.add(group);
 
   // --- ground: asphalt base, then sidewalk slabs, then the beach and sea ---
+  // The ground plane is bigger than the city and shifted south, so the beach
+  // and sea have room past the last block.
   const ground = new THREE.Mesh(
     new THREE.PlaneGeometry(half * 2 + 80, half * 2 + 120),
     new THREE.MeshLambertMaterial({ color: PALETTE.asphalt }),
@@ -153,6 +155,73 @@ export function buildWorld(scene) {
     }
   }
 
+  // --- the safehouse garage at the Palm Heights hideout ---
+  // The building sits off to the side so the hideout marker itself stays
+  // clear; the flat pad in front of it is where cars are stored.
+  const garagePad = new THREE.Mesh(
+    new THREE.BoxGeometry(14, 0.25, 11),
+    new THREE.MeshLambertMaterial({ color: 0x4a4f58 }),
+  );
+  garagePad.position.set(-150, 0.12, -108);
+  garagePad.receiveShadow = true;
+  group.add(garagePad);
+  const garageBuilding = new THREE.Mesh(
+    new THREE.BoxGeometry(16, 6, 10),
+    new THREE.MeshLambertMaterial({ color: 0x7a6a8a }),
+  );
+  garageBuilding.position.set(-164, 3.3, -112);
+  garageBuilding.castShadow = true;
+  garageBuilding.receiveShadow = true;
+  group.add(garageBuilding);
+  const garageDoor = new THREE.Mesh(
+    new THREE.BoxGeometry(10, 4.4, 0.3),
+    new THREE.MeshLambertMaterial({ color: 0x2c313a }),
+  );
+  garageDoor.position.set(-156.2, 2.4, -112);
+  group.add(garageDoor);
+  const garageSign = new THREE.Mesh(
+    new THREE.PlaneGeometry(9, 2.2),
+    new THREE.MeshBasicMaterial({ map: makeSignTexture('GARAGE', '#ffc861') }),
+  );
+  garageSign.position.set(-155.9, 5.4, -112);
+  garageSign.rotation.y = Math.PI / 2;
+  group.add(garageSign);
+  colliders.push({ minX: -172, maxX: -156, minZ: -117, maxZ: -107 });
+
+  // --- Ammu-Nation, the gun shop downtown ---
+  const shopBuilding = new THREE.Mesh(
+    new THREE.BoxGeometry(14, 7, 12),
+    new THREE.MeshLambertMaterial({ color: 0x8c2f2f }),
+  );
+  shopBuilding.position.set(116, 3.8, -44);
+  shopBuilding.castShadow = true;
+  shopBuilding.receiveShadow = true;
+  group.add(shopBuilding);
+  const shopSign = new THREE.Mesh(
+    new THREE.PlaneGeometry(13, 2.2),
+    new THREE.MeshBasicMaterial({ map: makeSignTexture('AMMU-NATION', '#ffd97a') }),
+  );
+  shopSign.position.set(116, 6.4, -37.9);
+  group.add(shopSign);
+  colliders.push({ minX: 109, maxX: 123, minZ: -50, maxZ: -38 });
+
+  // --- the marina radio tower, blinking red over the boardwalk ---
+  const tower = new THREE.Mesh(
+    new THREE.CylinderGeometry(0.5, 0.9, 42, 8),
+    new THREE.MeshLambertMaterial({ color: 0x8a8f96 }),
+  );
+  tower.position.set(-52, 21, 178);
+  tower.castShadow = true;
+  group.add(tower);
+  const towerLight = new THREE.Mesh(
+    new THREE.SphereGeometry(0.7, 8, 8),
+    new THREE.MeshBasicMaterial({ color: 0xff2222 }),
+  );
+  towerLight.position.set(-52, 42.6, 178);
+  towerLight.name = 'tower-light';
+  group.add(towerLight);
+  colliders.push({ minX: -52.9, maxX: -51.1, minZ: 177.1, maxZ: 178.9 });
+
   // A striped awning over the marina boardwalk, for a splash of colour.
   const awningMat = new THREE.MeshLambertMaterial({ color: 0xe74c3c });
   const awning = new THREE.Mesh(new THREE.BoxGeometry(30, 0.4, 8), awningMat);
@@ -194,6 +263,16 @@ export function buildWorld(scene) {
     streets,
     parkingSpots,
     playerSpawn: { x: 0, z: -40, heading: 0 },
+    garageSpot: { x: -150, z: -108 },
+    shopSpot: { x: 108, z: -36 },
+    towerSpot: { x: -52, z: 178 },
+    // Roadblocks register and remove their own footprints here, so the
+    // collision list stays one array that resolveCircle reads.
+    addCollider(box) { colliders.push(box); },
+    removeCollider(box) {
+      const index = colliders.indexOf(box);
+      if (index !== -1) colliders.splice(index, 1);
+    },
     // Push a circle (feet or wheels) out of every building it overlaps.
     resolveCircle(pos, radius) {
       for (const box of colliders) {
@@ -248,4 +327,23 @@ function makeWindowTexture() {
   texture.wrapS = THREE.RepeatWrapping;
   texture.wrapT = THREE.RepeatWrapping;
   return texture;
+}
+
+// A shop sign: bold text on a dark board, drawn once on a canvas.
+function makeSignTexture(text, color) {
+  const canvas = document.createElement('canvas');
+  canvas.width = 512;
+  canvas.height = 128;
+  const ctx = canvas.getContext('2d');
+  ctx.fillStyle = '#14181f';
+  ctx.fillRect(0, 0, 512, 128);
+  ctx.strokeStyle = color;
+  ctx.lineWidth = 6;
+  ctx.strokeRect(6, 6, 500, 116);
+  ctx.fillStyle = color;
+  ctx.font = '900 64px system-ui, sans-serif';
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.fillText(text, 256, 68);
+  return new THREE.CanvasTexture(canvas);
 }

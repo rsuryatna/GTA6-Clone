@@ -1,3 +1,6 @@
+// NOTE: unused by SOLMARINA — the game renders with three.js in main.js.
+// This is the kit starter's 2D canvas renderer, kept for reference; it is
+// not imported.
 // Drawing only: the world's state and the current screen in, pixels out. The 1280x720 playfield
 // is scaled to fit the window and centred, the margin filled with the backdrop colour. Flat
 // rectangles and circles, canvas text for the HUD and the panels. Text that holds a number is

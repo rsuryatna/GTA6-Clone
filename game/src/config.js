@@ -29,6 +29,78 @@ export const PLAYER = {
   pistolRange: 90,
 };
 
+// The weapon wheel: four switchable weapons (keys 1-4). Damage is per
+// pellet; the shotgun fires a spread of six. Prices are shop prices; the
+// respect column is the reputation rank a weapon needs before Ammu-Nation
+// will sell it. The pistol is Jules' from the start.
+export const WEAPONS = [
+  { id: 'pistol', name: 'Pistol', damage: 34, magSize: 12, range: 90, fireRate: 0.22, spread: 0.01, pellets: 1, price: 0, respect: 0 },
+  { id: 'shotgun', name: 'Shotgun', damage: 22, magSize: 6, range: 42, fireRate: 0.7, spread: 0.09, pellets: 6, price: 400, respect: 0 },
+  { id: 'smg', name: 'SMG', damage: 16, magSize: 30, range: 60, fireRate: 0.09, spread: 0.05, pellets: 1, price: 600, respect: 20 },
+  { id: 'rifle', name: 'Rifle', damage: 55, magSize: 10, range: 130, fireRate: 0.5, spread: 0.005, pellets: 1, price: 900, respect: 50 },
+];
+
+export const AMMO_PRICE = 50;
+export const HEALTH_PRICE = 100;
+
+// The police helicopter: out at four stars and up, hovering over the
+// player with a searchlight. It never lands and it never stops watching —
+// while it is up, the wanted level cannot fade. At 30 m the body sits above
+// the chase camera's view, so in normal play only its searchlight reads;
+// the staged chase shot frames it with a special camera.
+export const HELI = {
+  altitude: 30,
+  followSpeed: 26,
+  cruiseSpeed: 34,
+  rotorSpeed: 22,
+};
+
+// Roadblocks: at three stars the PD throws barriers across the road ahead
+// of the player, with a cruiser parked behind them. They are placed far
+// enough ahead that the player can always steer around them.
+export const ROADBLOCK = {
+  minWanted: 3,
+  maxGroups: 2,
+  aheadDistance: 62,
+  width: 9,
+};
+
+// The safehouse garage at the Palm Heights hideout, and its upgrades.
+export const GARAGE = {
+  x: -150,
+  z: -108,
+  radius: 9,
+  nosPrice: 500,
+  armorPrice: 800,
+  nosBoost: 1.45,
+  nosDrain: 0.34,
+  nosRefill: 0.12,
+};
+
+// Ammu-Nation, the gun shop downtown.
+export const SHOP = {
+  x: 108,
+  z: -36,
+  radius: 7,
+};
+
+// Respect: reputation ranks earned from jobs and heat, lost to arrests.
+// Ranks gate the shop's better weapons and discount garage upgrades.
+export const RESPECT = {
+  ranks: [
+    { at: 0, name: 'Nobody' },
+    { at: 20, name: 'Known' },
+    { at: 50, name: 'Respected' },
+    { at: 100, name: 'Legend' },
+  ],
+  perMission: 10,
+  perCarjack: 1,
+  perEscape: 5,
+  perBusted: -10,
+  discountAt: 50,
+  discount: 0.25,
+};
+
 export const CAR = {
   accel: 22,
   brake: 34,
@@ -58,6 +130,7 @@ export const POLICE = {
 
 export const WANTED = {
   stealCar: 1,
+  carjack: 1,
   punchPed: 1,
   shootPed: 2,
   punchCop: 2,

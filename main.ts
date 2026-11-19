@@ -8,6 +8,15 @@
 // the judge reads. It does no game logic of its own: the city, the missions
 // and the screenshots are all produced by the files it copies.
 //
+// Entry 3 adds ten story missions, the police helicopter and roadblocks, a
+// four-weapon wheel, carjacking, the safehouse garage with NOS and armour,
+// three radio stations, the Ammu-Nation shop and a respect system — all in
+// the game/ files this program copies.
+//
+// Re-witnessed under recording 01a1f21b: the first entry-3 recording died in
+// a VM restart before it was sealed, so every counted file was touched again
+// under the new recording before this commit.
+//
 // Run it outside the grader with MAKEFUN_OUTPUT_DIR standing in for /output:
 //   mkdir -p out && MAKEFUN_OUTPUT_DIR=out node main.ts
 // The program runs twice and must write identical bytes both times; copying

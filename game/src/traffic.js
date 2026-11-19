@@ -5,7 +5,7 @@
 import * as THREE from 'three';
 import { CITY, PALETTE, TRAFFIC } from './config.js';
 import { makeCarMesh } from './vehicles.js';
-import { pick, range } from './random.js';
+import { pick, range, shuffle } from './random.js';
 
 function loopForBlock(rng, streets, blockIndex) {
   // A rectangle around one block, on the road centrelines, with a lane offset.
@@ -22,7 +22,7 @@ function loopForBlock(rng, streets, blockIndex) {
     { x: x1 - lane, z: z1 - lane },
     { x: x0 + lane, z: z1 - lane },
   ];
-  if (rng() < 0.5) points.reverse();
+  if (rng() < 0.5) points.reverse(); // Half the loops run clockwise, half anticlockwise, so oncoming traffic reads on every street.
   return points;
 }
 
@@ -31,7 +31,9 @@ export function createTraffic(scene, world, rng) {
   const peds = [];
   const streets = world.streets;
 
-  const pedShirts = [0xe74c3c, 0x2ecc71, 0xf39c12, 0x9b59b6, 0x1abc9c, 0xecf0f1];
+  // Pedestrian shirts, shuffled once so the same seed still gives the same
+  // city, but no two neighbours wear the same colour twice in a row.
+  const pedShirts = shuffle(rng, [0xe74c3c, 0x2ecc71, 0xf39c12, 0x9b59b6, 0x1abc9c, 0xecf0f1]);
   const skin = new THREE.MeshLambertMaterial({ color: 0xd9a066 });
 
   function makePed() {
@@ -47,19 +49,27 @@ export function createTraffic(scene, world, rng) {
     return group;
   }
 
-  for (let i = 0; i < TRAFFIC.carCount; i += 1) {
+  // One AI car on a rectangular loop around a block. Used for the initial
+  // traffic and to replace cars the player carjacks, so the streets never
+  // run empty.
+  let respawnTimer = 0;
+  function spawnCar() {
     const color = pick(rng, PALETTE.car);
     const mesh = makeCarMesh(color, false);
-    const loop = loopForBlock(rng, streets, i);
+    const loop = loopForBlock(rng, streets, Math.floor(rng() * 24));
     const start = Math.floor(rng() * loop.length);
     mesh.position.set(loop[start].x, 0, loop[start].z);
     scene.add(mesh);
-    cars.push({
+    const car = {
       mesh, loop, target: (start + 1) % loop.length,
       speed: TRAFFIC.carSpeed * range(rng, 0.8, 1.2),
       color, isPolice: false, parked: false,
-    });
+    };
+    cars.push(car);
+    return car;
   }
+
+  for (let i = 0; i < TRAFFIC.carCount; i += 1) spawnCar();
 
   for (let i = 0; i < TRAFFIC.pedCount; i += 1) {
     const mesh = makePed();
@@ -133,6 +143,37 @@ export function createTraffic(scene, world, rng) {
     update(dt, playerPos, dangerPos) {
       updateCars(dt);
       updatePeds(dt, playerPos, dangerPos);
+      // A carjacked car is replaced after a while, so the streets stay busy.
+      if (cars.length < TRAFFIC.carCount) {
+        respawnTimer += dt;
+        if (respawnTimer > 20) {
+          respawnTimer = 0;
+          spawnCar();
+        }
+      }
+    },
+    // Nearest moving traffic car to a point (for carjacking).
+    nearestCar(pos, maxDist) {
+      let best = null;
+      let bestDist = maxDist;
+      for (const car of cars) {
+        const d = Math.hypot(car.mesh.position.x - pos.x, car.mesh.position.z - pos.z);
+        if (d < bestDist) { bestDist = d; best = car; }
+      }
+      return best;
+    },
+    // Yank the driver out: the car leaves traffic and becomes the player's.
+    // Nearby walkers see it happen and run.
+    jackCar(car) {
+      const index = cars.indexOf(car);
+      if (index === -1) return null;
+      cars.splice(index, 1);
+      for (const ped of peds) {
+        if (ped.dead) continue;
+        const d = Math.hypot(ped.mesh.position.x - car.mesh.position.x, ped.mesh.position.z - car.mesh.position.z);
+        if (d < 16) ped.panic = 4;
+      }
+      return { mesh: car.mesh, color: car.color, heading: car.mesh.rotation.y };
     },
     // Nearest living pedestrian to a point (for punches and bullets).
     nearestPed(pos, maxDist) {

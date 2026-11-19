@@ -1,10 +1,11 @@
-// The story of SOLMARINA: five jobs from Mara Voss, the fixer who runs the
+// The story of SOLMARINA: ten jobs from Mara Voss, the fixer who runs the
 // marina. Each mission is a list of steps — go somewhere, steal a car, pick
 // someone up, survive the heat, deliver, hold — and the game advances when a
 // step's condition is met. A golden beacon marks the target in the world, on
 // the HUD arrow and on the minimap.
 import * as THREE from 'three';
 
+// Ten jobs in story order; the game plays them one at a time, in this order.
 const MISSIONS = [
   {
     id: 'wheels',
@@ -61,6 +62,63 @@ const MISSIONS = [
       { type: 'goto', x: 36, z: 36, radius: 8, text: 'Reach the Solmarina Trust bank downtown' },
       { type: 'hold', x: 36, z: 36, seconds: 5, text: 'Hold the lobby while the bag fills' },
       { type: 'escape', wanted: 4, x: -150, z: -108, radius: 8, text: 'Escape the four-star heat to the hideout' },
+    ],
+  },
+  {
+    id: 'getaway',
+    title: 'Job 6 — The Getaway',
+    giver: 'Mara Voss',
+    briefing: 'Retirement was a nice idea, but the crew needs one clean car that no one has seen. Steal any car on the street and park it in the safehouse garage at the hideout — it is yours to keep.',
+    reward: 1500,
+    steps: [
+      { type: 'stealCar', text: 'Steal any car (walk up to one and press E)' },
+      { type: 'goto', x: -150, z: -108, radius: 9, text: 'Park it in the safehouse garage' },
+    ],
+  },
+  {
+    id: 'heatwave',
+    title: 'Job 7 — Heat Wave',
+    giver: 'Mara Voss',
+    briefing: 'A rival crew put a price on your head and the whole PD is out. Four stars, a helicopter overhead — survive the heat for a full minute, then lose them at the hideout.',
+    reward: 1800,
+    steps: [
+      { type: 'survive', seconds: 60, wanted: 4, text: 'Survive the four-star heat for 60 seconds' },
+      { type: 'goto', x: -150, z: -108, radius: 8, text: 'Reach the hideout in Palm Heights' },
+    ],
+  },
+  {
+    id: 'golden',
+    title: 'Job 8 — The Golden Hour',
+    giver: 'Mara Voss',
+    briefing: 'The boat leaves at golden hour and the cargo is already on the pier. Load it at the marina — eight seconds on the dock — then run five stars of heat to the hideout. The helicopter will be watching.',
+    reward: 4000,
+    steps: [
+      { type: 'goto', x: -40, z: 168, radius: 8, text: 'Reach the marina dock at golden hour' },
+      { type: 'hold', x: -40, z: 168, seconds: 8, text: 'Hold the dock while the cargo loads' },
+      { type: 'escape', wanted: 5, x: -150, z: -108, radius: 8, text: 'Escape the five-star heat to the hideout' },
+    ],
+  },
+  {
+    id: 'nightshift',
+    title: 'Job 9 — Night Shift',
+    giver: 'Mara Voss',
+    briefing: 'A client at the boardwalk wants a package at the bank before the night shift ends — seventy-five seconds — then the night manager at the Trust wants a word, five seconds of your time, no more.',
+    reward: 2200,
+    steps: [
+      { type: 'goto', x: -40, z: 168, radius: 6, text: 'Pick up the package at the boardwalk' },
+      { type: 'deliver', x: 36, z: 36, radius: 8, seconds: 75, text: 'Deliver the package to the bank (75s)' },
+      { type: 'hold', x: 36, z: 36, seconds: 5, text: 'Hold the lobby while the manager counts' },
+    ],
+  },
+  {
+    id: 'king',
+    title: 'Job 10 — King of Solmarina',
+    giver: 'Mara Voss',
+    briefing: 'Last job. The whole city knows your name now, and the PD is bringing everything — five stars, the helicopter, roadblocks on every avenue. Survive the full heat for 45 seconds, then come home to the hideout. Do this and you are the king of Solmarina.',
+    reward: 5000,
+    steps: [
+      { type: 'survive', seconds: 45, wanted: 5, text: 'Survive the five-star heat for 45 seconds' },
+      { type: 'goto', x: -150, z: -108, radius: 8, text: 'Come home to the hideout' },
     ],
   },
 ];

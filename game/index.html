@@ -4,6 +4,8 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>SOLMARINA — Open-World Crime Game</title>
+<meta name="description" content="SOLMARINA — an open-world crime game in a sun-soaked coastal city. Steal cars, dodge the Solmarina PD, and work ten jobs for Mara Voss.">
+<link rel="icon" href="data:,">
 <style>
   html, body { margin: 0; height: 100%; overflow: hidden; background: #0e1420; font-family: system-ui, -apple-system, "Segoe UI", sans-serif; }
   #game { position: fixed; inset: 0; width: 100%; height: 100%; display: block; touch-action: none; }
@@ -16,6 +18,9 @@
   #health-fill { height: 100%; width: 100%; background: #2ecc71; }
   #health-text { font-size: 13px; font-weight: 700; }
   #ammo { margin-top: 6px; font-size: 14px; font-weight: 600; color: #ffd97a; }
+  #respect { margin-top: 4px; font-size: 13px; font-weight: 700; color: #c8b8e0; }
+  #weapon-bar { bottom: 56px; left: 16px; font-size: 13px; font-weight: 700; color: #dfe8ef; background: rgba(0,0,0,.5); border-radius: 6px; padding: 6px 10px; }
+  #radio { bottom: 24px; left: 16px; font-size: 14px; font-weight: 700; color: #7dd8ff; background: rgba(0,0,0,.5); border-radius: 6px; padding: 6px 10px; opacity: 0; }
   #objective { top: 14px; left: 50%; transform: translateX(-50%); text-align: center; background: rgba(0,0,0,.5); border: 1px solid rgba(255,200,97,.6); border-radius: 8px; padding: 8px 18px; max-width: 520px; }
   #objective-title { font-size: 17px; font-weight: 800; color: #ffc861; }
   #objective-text { font-size: 14px; margin-top: 2px; }
@@ -43,8 +48,11 @@
 <div id="top-left" class="panel">
   <div id="cash">$150</div>
   <div id="health-row"><div id="health-bar"><div id="health-fill"></div></div><span id="health-text">100</span></div>
-  <div id="ammo">Ammo 12 / 12</div>
+  <div id="ammo">Pistol — Ammo 12 / 12</div>
+  <div id="respect">Respect: Nobody</div>
 </div>
+<div id="weapon-bar" class="panel"></div>
+<div id="radio" class="panel"></div>
 <div id="objective" class="panel"><div id="objective-title">SOLMARINA</div><div id="objective-text">Welcome to the city.</div></div>
 <div id="stars" class="panel">☆☆☆☆☆</div>
 <canvas id="minimap" width="180" height="180"></canvas>
@@ -53,7 +61,7 @@
 <div id="prompt" class="panel"></div>
 <div id="speed" class="panel"></div>
 <div id="crosshair" class="panel"></div>
-<div id="hint" class="panel">WASD move · Shift run · E enter car · F punch · Click shoot · R reload · Drag mouse camera · P pause · M mute</div>
+<div id="hint" class="panel">WASD move · Shift run / NOS · E enter car · 1-4 weapons · Q radio · F punch · Click shoot · R reload · Drag mouse camera · P pause · M mute</div>
 
 <div id="menu"><div id="menu-card">
   <h1 id="menu-title">SOLMARINA</h1>

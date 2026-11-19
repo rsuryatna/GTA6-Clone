@@ -31,6 +31,14 @@ export function createPlayer(scene, spawn) {
   fist.position.set(0, 1.2, 0.5);
   fist.visible = false;
   group.add(fist);
+  // The weapon in Jules' hand: a small dark pistol, shown whenever he is
+  // armed on foot so the weapon wheel reads in the world, not just the HUD.
+  // The gun is visual only; damage comes from combat.js.
+  const gunMat = new THREE.MeshLambertMaterial({ color: 0x1a1a1a });
+  const gun = new THREE.Mesh(new THREE.BoxGeometry(0.1, 0.14, 0.42), gunMat);
+  gun.position.set(0.32, 1.15, 0.42);
+  gun.visible = true;
+  group.add(gun);
 
   group.position.set(spawn.x, 0, spawn.z);
   scene.add(group);
@@ -43,6 +51,7 @@ export function createPlayer(scene, spawn) {
     punchTimer: 0,
     invulnerable: 0,
     dead: false,
+    armed: true,
   };
 
   function update(dt, input, world, cameraYaw) {
@@ -83,6 +92,8 @@ export function createPlayer(scene, spawn) {
       fist.visible = state.punchTimer > 0.08;
       fist.position.z = 0.5 + (0.2 - state.punchTimer) * 2;
     }
+    // The gun hides while the fist is out.
+    gun.visible = state.armed && state.punchTimer <= 0;
     if (state.invulnerable > 0) state.invulnerable -= dt;
   }
 
@@ -96,6 +107,12 @@ export function createPlayer(scene, spawn) {
       state.punchTimer = 0.22;
       fist.visible = true;
       return true;
+    },
+    // Show or hide the weapon in Jules' hand (hidden while driving, since
+    // the player mesh is hidden then anyway, and while punching).
+    setArmed(visible) {
+      state.armed = visible;
+      gun.visible = visible && state.punchTimer <= 0;
     },
     hurt(amount) {
       if (state.invulnerable > 0 || state.dead) return false;

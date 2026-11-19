@@ -1,7 +1,9 @@
 // The HUD: cash, health, wanted stars, the mission objective, prompts, and
 // the minimap — a live top-down canvas of Solmarina with the player, the
 // mission marker, traffic and police. All DOM is built in index.html; this
-// module only writes into it.
+// module only writes into it. It also shows the weapon wheel (the four
+// weapons, owned ones lit, the active one highlighted), the car radio
+// station while driving, and Jules' respect rank.
 import { CITY } from './config.js';
 
 export function createHud(document) {
@@ -17,6 +19,9 @@ export function createHud(document) {
   const speedEl = document.getElementById('speed');
   const crosshairEl = document.getElementById('crosshair');
   const ammoEl = document.getElementById('ammo');
+  const weaponBarEl = document.getElementById('weapon-bar');
+  const radioEl = document.getElementById('radio');
+  const respectEl = document.getElementById('respect');
   const minimap = document.getElementById('minimap');
   const mapCtx = minimap.getContext('2d');
   const menuEl = document.getElementById('menu');
@@ -24,10 +29,25 @@ export function createHud(document) {
   const menuText = document.getElementById('menu-text');
   const menuButtons = document.getElementById('menu-buttons');
 
+  // The last* fields remember what the DOM already shows, so update() only
+  // writes what changed instead of touching every element every frame.
   let toastTimer = null;
   let lastCash = -1;
   let lastStars = -1;
   let lastAmmo = -1;
+  let lastWeaponName = '';
+  let lastWeaponBar = '';
+  let lastRadio = '';
+  let lastRespect = '';
+
+  function renderWeaponBar(weapons) {
+    if (!weapons) return;
+    const text = weapons.map((w, i) => `${i + 1}:${w.owned ? w.name : '???'}${w.active ? '*' : ''} ${w.owned ? w.ammo : '-'}`).join(' | ');
+    if (text === lastWeaponBar) return;
+    lastWeaponBar = text;
+    weaponBarEl.textContent = text;
+    weaponBarEl.style.opacity = '1';
+  }
 
   function showToast(text, seconds) {
     toastEl.textContent = text;
@@ -147,9 +167,24 @@ export function createHud(document) {
         starsEl.textContent = '★'.repeat(state.wanted) + '☆'.repeat(5 - state.wanted);
         starsEl.style.color = state.wanted > 0 ? '#ffcf3f' : '#8899aa';
       }
-      if (state.ammo !== lastAmmo) {
+      if (state.ammo !== lastAmmo || state.weaponName !== lastWeaponName) {
         lastAmmo = state.ammo;
-        ammoEl.textContent = `Ammo ${state.ammo} / 12`;
+        lastWeaponName = state.weaponName;
+        ammoEl.textContent = `${state.weaponName || 'Pistol'} — Ammo ${state.ammo} / ${state.magSize || 12}`;
+      }
+      renderWeaponBar(state.weapons);
+      // The radio only shows while driving; respect always shows.
+      const radioText = state.radio || '';
+      if (radioText !== lastRadio) {
+        lastRadio = radioText;
+        radioEl.textContent = radioText;
+        radioEl.style.opacity = radioText ? '1' : '0';
+      }
+      const respectText = state.respect || '';
+      if (respectText !== lastRespect) {
+        lastRespect = respectText;
+        respectEl.textContent = respectText;
+        respectEl.style.opacity = respectText ? '1' : '0';
       }
       drawMinimap(state);
     },

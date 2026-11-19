@@ -1,8 +1,10 @@
 // Cars: building them from boxes, parking them, stealing them and driving
 // them. Driving is arcade physics — throttle, steering that bites harder at
-// speed, and a circle collider that slides along buildings.
+// speed, and a circle collider that slides along buildings. A carjacked
+// traffic car becomes drivable the same way a parked one does, and a car
+// with the garage's NOS upgrade boosts on Shift while its meter lasts.
 import * as THREE from 'three';
-import { CAR, PALETTE } from './config.js';
+import { CAR, GARAGE, PALETTE } from './config.js';
 import { pick } from './random.js';
 
 export function makeCarMesh(color, isPolice) {
@@ -34,6 +36,7 @@ export function makeCarMesh(color, isPolice) {
     group.add(light);
   }
   if (isPolice) {
+    // The light bar and white stripe are what make a cruiser read as police at a glance.
     const bar = new THREE.Mesh(new THREE.BoxGeometry(1.2, 0.16, 0.4),
       new THREE.MeshBasicMaterial({ color: 0xff2222 }));
     bar.position.set(0, 1.38, -0.2);
@@ -49,7 +52,7 @@ export function makeCarMesh(color, isPolice) {
 
 export function createVehicleManager(scene, world, rng) {
   const parked = [];
-  const driven = { car: null, speed: 0 };
+  const driven = { car: null, speed: 0, nos: false, armor: false, nosMeter: 1, boosting: false };
 
   function addParked(x, z, heading) {
     const color = pick(rng, PALETTE.car);
@@ -85,6 +88,38 @@ export function createVehicleManager(scene, world, rng) {
     return car;
   }
 
+  // Remove a car from the world entirely (the garage stores it by colour).
+  function removeCar(car) {
+    const index = parked.indexOf(car);
+    if (index !== -1) parked.splice(index, 1);
+    if (driven.car === car) {
+      driven.car = null;
+      driven.speed = 0;
+    }
+    scene.remove(car.mesh);
+  }
+  function adoptCar(mesh, color, heading) {
+    const car = { mesh, color, heading, speed: 0, isPolice: false, parked: false, x: mesh.position.x, z: mesh.position.z };
+    parked.push(car);
+    driven.car = car;
+    driven.speed = 0;
+    return car;
+  }
+
+  // A stored garage car comes back out as a fresh car of the same colour,
+  // placed at the garage door.
+  function spawnStoredCar(color, x, z, heading) {
+    const mesh = makeCarMesh(color, false);
+    mesh.position.set(x, 0, z);
+    mesh.rotation.y = heading;
+    scene.add(mesh);
+    const car = { mesh, color, heading, speed: 0, isPolice: false, parked: false, x, z };
+    parked.push(car);
+    driven.car = car;
+    driven.speed = 0;
+    return car;
+  }
+
   function exitCar() {
     const car = driven.car;
     if (!car) return null;
@@ -104,14 +139,25 @@ export function createVehicleManager(scene, world, rng) {
     if (!car) return 0;
     const throttle = input.moveForward();
     const steer = input.moveStrafe();
-    if (throttle > 0) driven.speed += CAR.accel * dt;
+    // NOS: hold Shift for a boost while the meter lasts; it refills when
+    // the player is not boosting. Armour does not change the drive — it
+    // softens police rams, which main.js reads through isArmored().
+    driven.boosting = false;
+    if (driven.nos && (input.isDown('ShiftLeft') || input.isDown('ShiftRight')) && driven.nosMeter > 0.01 && throttle > 0) {
+      driven.boosting = true;
+      driven.nosMeter = Math.max(0, driven.nosMeter - GARAGE.nosDrain * dt);
+    } else {
+      driven.nosMeter = Math.min(1, driven.nosMeter + GARAGE.nosRefill * dt);
+    }
+    const topSpeed = driven.boosting ? CAR.maxSpeed * GARAGE.nosBoost : CAR.maxSpeed;
+    if (throttle > 0) driven.speed += CAR.accel * (driven.boosting ? 1.6 : 1) * dt;
     else if (throttle < 0) {
       driven.speed -= (driven.speed > 0.5 ? CAR.brake : CAR.reverseAccel) * dt;
     } else {
       // Rolling resistance.
       driven.speed -= Math.sign(driven.speed) * Math.min(Math.abs(driven.speed), 8 * dt);
     }
-    driven.speed = Math.max(-CAR.maxReverse, Math.min(CAR.maxSpeed, driven.speed));
+    driven.speed = Math.max(-CAR.maxReverse, Math.min(topSpeed, driven.speed));
     const speedFactor = Math.min(1, Math.abs(driven.speed) / 12);
     car.heading += steer * CAR.steer * speedFactor * dt * Math.sign(driven.speed || 1);
     const forward = new THREE.Vector3(Math.sin(car.heading), 0, Math.cos(car.heading));
@@ -137,7 +183,18 @@ export function createVehicleManager(scene, world, rng) {
     nearestParked,
     enterCar,
     exitCar,
+    adoptCar,
+    spawnStoredCar,
+    removeCar,
     updateDriving,
+    setUpgrades({ nos, armor }) {
+      driven.nos = nos === true;
+      driven.armor = armor === true;
+      if (!driven.nos) driven.nosMeter = 1;
+    },
+    isArmored() { return driven.armor; },
+    isBoosting() { return driven.boosting; },
+    nosMeter() { return driven.nosMeter; },
     isDriving() { return driven.car !== null; },
     currentCar() { return driven.car; },
   };

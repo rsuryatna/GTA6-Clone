@@ -54,12 +54,13 @@ export function createInput(canvas) {
   return {
     isDown(code) { return keys.has(code); },
     wasPressed(code) { return justPressed.has(code); },
-    // Movement axes, -1..1. Forward is W / Up, strafe is A / D.
+    // Movement axes, -1..1. Forward is W / Up, strafe is A / D — or the
+    // arrow keys, which steer as well as move.
     moveForward() {
       return (keys.has('up') ? 1 : 0) - (keys.has('down') ? 1 : 0);
     },
     moveStrafe() {
-      return (keys.has('KeyD') ? 1 : 0) - (keys.has('KeyA') ? 1 : 0);
+      return (keys.has('KeyD') || keys.has('ArrowRight') ? 1 : 0) - (keys.has('KeyA') || keys.has('ArrowLeft') ? 1 : 0);
     },
     takeMouseDelta() {
       const d = { dx: mouseDX, dy: mouseDY };
@@ -76,6 +77,14 @@ export function createInput(canvas) {
       const c = clicked;
       clicked = false;
       return c;
+    },
+    // The weapon wheel: which digit key (1-4) was pressed this frame, or 0.
+    // Edge-triggered like wasPressed, so holding a digit does not cycle.
+    takeDigit() {
+      for (let d = 1; d <= 4; d += 1) {
+        if (justPressed.has(`Digit${d}`)) return d;
+      }
+      return 0;
     },
     // Called at the end of every frame: edge triggers live for one frame only.
     endFrame() { justPressed.clear(); },
