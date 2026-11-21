@@ -1,144 +1,168 @@
-// NOTE: unused by SOLMARINA — the game renders with three.js in main.js.
-// This is the kit starter's 2D canvas renderer, kept for reference; it is
-// not imported.
-// Drawing only: the world's state and the current screen in, pixels out. The 1280x720 playfield
-// is scaled to fit the window and centred, the margin filled with the backdrop colour. Flat
-// rectangles and circles, canvas text for the HUD and the panels. Text that holds a number is
-// rebuilt only when the number changes, so a frame allocates nothing.
-import { FIELD, FONT, LIVES, PALETTE } from './config.js';
-import { KIND_COIN } from './world.js';
+// Visual effects for SOLMARINA: one pooled particle system.
+// Tyre smoke when the NOS kicks in or the car slides, muzzle sparks when
+// a gun fires, dust on the beach, and a proper fireball when a car blows
+// up. A single THREE.Points draw call renders the whole pool, so the
+// frame rate stays honest; particles are recycled, never allocated per
+// frame. The game (main.js) owns when effects fire — this module only
+// owns how they look and move.
+//
+// Live particles are tracked in a compact index list: each frame only
+// the living ones are stepped, and a dead one is swapped out of the
+// list in place. Each particle carries a position, a velocity, a
+// remaining life, a size that can grow as it ages (smoke puffs up,
+// sparks shrink), and a colour that fades out. A tiny shader draws each
+// point as a soft round sprite with its own size and alpha.
 
-export const SCREEN_TITLE = 'title';
-export const SCREEN_PLAY = 'play';
-export const SCREEN_PAUSED = 'paused';
-export const SCREEN_OVER = 'over';
+import * as THREE from 'three';
+import { FX } from './config.js';
 
-/** The panel's width; its height grows with its lines: room for the title, the lines and the prompt. */
-const PANEL = { width: 600, top: 134, line: 34, bottom: 70 };
-const LIFE_SIZE = 20;
-const LIFE_GAP = 8;
-
-function cachedLabel(prefix) {
-  let value = -1;
-  let text = '';
-  return function label(next) {
-    if (next !== value) {
-      value = next;
-      text = prefix + next;
-    }
-    return text;
-  };
+// Kinds, with the look baked in: colour range, speed, lift, life and
+// whether the sprite grows as it ages.
+function kindDef(hues, speed, rise, span, radius, swell, pull, alpha) {
+  return { hues, speed, rise, span, radius, swell, pull, alpha };
 }
 
-export function createRenderer(canvas) {
-  const context = canvas.getContext('2d');
-  const view = { scale: 1, x: 0, y: 0 };
-  const scoreLabel = cachedLabel('Score ');
-  const levelLabel = cachedLabel('Level ');
-  const finalLabel = cachedLabel('Score ');
-  const bestLabel = cachedLabel('Best ');
+const KINDS = {
+  smoke: kindDef([[0.45, 0.45, 0.48], [0.62, 0.62, 0.66]], [0.6, 1.6], [1.2, 2.4], [0.9, 1.4], [1.6, 2.6], 2.4, 0.4, 0.5),
+  spark: kindDef([[1, 0.75, 0.2], [1, 0.45, 0.1]], [6, 14], [2, 6], [0.2, 0.35], [0.35, 0.6], -0.5, 9, 0.95),
+  fire: kindDef([[1, 0.6, 0.1], [1, 0.25, 0.05]], [2, 6], [3, 7], [0.5, 0.9], [1.8, 3.2], 1.6, -2, 0.95),
+  dust: kindDef([[0.85, 0.75, 0.55], [0.75, 0.65, 0.45]], [0.5, 1.4], [0.6, 1.4], [0.7, 1.1], [1.0, 1.8], 1.8, 0.2, 0.5),
+  splash: kindDef([[0.75, 0.9, 0.95], [0.55, 0.75, 0.9]], [1, 3], [2, 5], [0.4, 0.7], [0.6, 1.1], 0.8, 7, 0.95),
+};
 
-  function resize() {
-    const ratio = window.devicePixelRatio || 1;
-    const width = Math.round(window.innerWidth * ratio);
-    const height = Math.round(window.innerHeight * ratio);
-    canvas.width = width;
-    canvas.height = height;
-    view.scale = Math.min(width / FIELD.width, height / FIELD.height);
-    view.x = (width - FIELD.width * view.scale) / 2;
-    view.y = (height - FIELD.height * view.scale) / 2;
+const VERT_SRC = `
+attribute vec3 aTint;
+attribute float aRadius;
+attribute float aFade;
+varying vec3 vTint;
+varying float vFade;
+void main() {
+  vTint = aTint;
+  vFade = aFade;
+  vec4 eye = modelViewMatrix * vec4(position, 1.0);
+  gl_PointSize = aRadius * (240.0 / max(1.0, -eye.z));
+  gl_Position = projectionMatrix * eye;
+}`;
+const FRAG_SRC = `
+varying vec3 vTint;
+varying float vFade;
+void main() {
+  vec2 off = gl_PointCoord - vec2(0.5);
+  float soft = smoothstep(0.5, 0.05, length(off));
+  vec4 px = vec4(vTint, vFade * soft);
+  if (px.a < 0.01) discard;
+  gl_FragColor = px;
+}`;
+
+function pickInRange(range) {
+  return range[0] + Math.random() * (range[1] - range[0]);
+}
+
+export function createFx(scene) {
+  const max = FX.maxParticles;
+  const pos = new Float32Array(max * 3);
+  const tint = new Float32Array(max * 3);
+  const radius = new Float32Array(max);
+  const fade = new Float32Array(max);
+  const vel = new Float32Array(max * 3);
+  const left = new Float32Array(max);
+  const total = new Float32Array(max);
+  const base = new Float32Array(max);
+  const swell = new Float32Array(max);
+  const pull = new Float32Array(max);
+  const startAlpha = new Float32Array(max);
+  const alive = [];
+  let cursor = 0;
+
+  const geometry = new THREE.BufferGeometry();
+  geometry.setAttribute('position', new THREE.BufferAttribute(pos, 3));
+  geometry.setAttribute('aTint', new THREE.BufferAttribute(tint, 3));
+  geometry.setAttribute('aRadius', new THREE.BufferAttribute(radius, 1));
+  geometry.setAttribute('aFade', new THREE.BufferAttribute(fade, 1));
+  const material = new THREE.ShaderMaterial({
+    vertexShader: VERT_SRC,
+    fragmentShader: FRAG_SRC,
+    transparent: true,
+    depthWrite: false,
+  });
+  const points = new THREE.Points(geometry, material);
+  points.frustumCulled = false;
+  points.renderOrder = 5;
+  scene.add(points);
+
+  function spawn(kind, x, y, z, count) {
+    const def = KINDS[kind] || KINDS.smoke;
+    for (let n = 0; n < count; n += 1) {
+      const i = cursor;
+      cursor = (cursor + 1) % max;
+      const i3 = i * 3;
+      if (left[i] <= 0) alive.push(i);
+      const angle = Math.random() * Math.PI * 2;
+      const speed = pickInRange(def.speed);
+      pos[i3] = x;
+      pos[i3 + 1] = y;
+      pos[i3 + 2] = z;
+      vel[i3] = Math.cos(angle) * speed;
+      vel[i3 + 1] = pickInRange(def.rise);
+      vel[i3 + 2] = Math.sin(angle) * speed;
+      const hue = def.hues[Math.floor(Math.random() * def.hues.length)];
+      tint[i3] = hue[0];
+      tint[i3 + 1] = hue[1];
+      tint[i3 + 2] = hue[2];
+      total[i] = pickInRange(def.span);
+      left[i] = total[i];
+      base[i] = pickInRange(def.radius);
+      radius[i] = base[i];
+      swell[i] = def.swell;
+      pull[i] = def.pull;
+      startAlpha[i] = def.alpha;
+      fade[i] = def.alpha;
+    }
   }
 
-  const fonts = new Map();
-  function text(value, x, y, size, color, align) {
-    if (!fonts.has(size)) fonts.set(size, `${size}px ${FONT}`);
-    context.font = fonts.get(size);
-    context.fillStyle = color;
-    context.textAlign = align;
-    context.fillText(value, x, y);
-  }
-
-  function drawField(state) {
-    context.fillStyle = PALETTE.sky;
-    context.fillRect(0, 0, FIELD.width, FIELD.height);
-    context.fillStyle = PALETTE.ground;
-    context.fillRect(0, FIELD.groundY, FIELD.width, FIELD.height - FIELD.groundY);
-
-    const items = state.items;
-    for (let index = 0; index < items.length; index += 1) {
-      const item = items[index];
-      if (!item.active) continue;
-      if (item.kind === KIND_COIN) {
-        context.fillStyle = PALETTE.coin;
-        context.beginPath();
-        context.arc(item.x + item.width / 2, item.y + item.height / 2, item.width / 2, 0, Math.PI * 2);
-        context.fill();
-      } else {
-        context.fillStyle = PALETTE.block;
-        context.fillRect(item.x, item.y, item.width, item.height);
+  function tick(dt) {
+    for (let a = alive.length - 1; a >= 0; a -= 1) {
+      const i = alive[a];
+      left[i] -= dt;
+      if (left[i] <= 0) {
+        fade[i] = 0;
+        alive[a] = alive[alive.length - 1];
+        alive.pop();
+        continue;
       }
+      const i3 = i * 3;
+      vel[i3 + 1] -= pull[i] * dt;
+      pos[i3] += vel[i3] * dt;
+      pos[i3 + 1] += vel[i3 + 1] * dt;
+      pos[i3 + 2] += vel[i3 + 2] * dt;
+      // Drag: smoke hangs in the air, sparks die fast.
+      const damp = 1 - Math.min(0.9, dt * 1.5);
+      vel[i3] *= damp;
+      vel[i3 + 2] *= damp;
+      const age = 1 - left[i] / total[i];
+      radius[i] = Math.max(0.1, base[i] + swell[i] * age);
+      fade[i] = startAlpha[i] * (1 - age * age);
     }
-
-    const player = state.player;
-    // Blink while invulnerable after a hit: hidden on every other tenth of a second.
-    if (player.invulnerable === 0 || Math.floor(player.invulnerable * 10) % 2 === 1) {
-      context.fillStyle = PALETTE.player;
-      context.fillRect(player.x, player.y, player.width, player.height);
-    }
+    geometry.attributes.position.needsUpdate = true;
+    geometry.attributes.aTint.needsUpdate = true;
+    geometry.attributes.aRadius.needsUpdate = true;
+    geometry.attributes.aFade.needsUpdate = true;
   }
 
-  function drawHud(state) {
-    context.textBaseline = 'top';
-    text(scoreLabel(state.score), 24, 20, 28, PALETTE.text, 'left');
-    text(levelLabel(state.level), FIELD.width / 2, 20, 28, PALETTE.text, 'center');
-    const firstLife = FIELD.width - 24 - LIVES * (LIFE_SIZE + LIFE_GAP) + LIFE_GAP;
-    text('Lives', firstLife - 12, 20, 28, PALETTE.text, 'right');
-    for (let life = 0; life < LIVES; life += 1) {
-      context.fillStyle = life < state.lives ? PALETTE.player : PALETTE.ground;
-      context.fillRect(firstLife + life * (LIFE_SIZE + LIFE_GAP), 24, LIFE_SIZE, LIFE_SIZE);
-    }
-  }
-
-  function drawPanel(title, lines, prompt) {
-    const height = PANEL.top + lines.length * PANEL.line + PANEL.bottom;
-    const x = (FIELD.width - PANEL.width) / 2;
-    const y = (FIELD.height - height) / 2;
-    context.fillStyle = PALETTE.panel;
-    context.fillRect(x, y, PANEL.width, height);
-    context.textBaseline = 'alphabetic';
-    text(title, FIELD.width / 2, y + 78, 48, PALETTE.text, 'center');
-    for (let index = 0; index < lines.length; index += 1) {
-      text(lines[index], FIELD.width / 2, y + PANEL.top + index * PANEL.line, 22, PALETTE.muted, 'center');
-    }
-    text(prompt, FIELD.width / 2, y + height - 40, 24, PALETTE.coin, 'center');
-  }
-
-  const TITLE_LINES = ['Dodge the red blocks. Catch the gold coins.', 'Move with ← → or A D.  Pause with P.', ''];
-  const PAUSED_LINES = ['The blocks will wait for you.'];
-  const OVER_LINES = ['', ''];
-
-  /** Paint one frame: the field, then the HUD or a panel for the screen the game is on. */
-  function draw(state, screen, best) {
-    context.setTransform(1, 0, 0, 1, 0, 0);
-    context.fillStyle = PALETTE.backdrop;
-    context.fillRect(0, 0, canvas.width, canvas.height);
-    context.setTransform(view.scale, 0, 0, view.scale, view.x, view.y);
-    drawField(state);
-    if (screen === SCREEN_TITLE) {
-      TITLE_LINES[2] = bestLabel(best);
-      drawPanel('Block Dodger', TITLE_LINES, 'Press Space or click to start');
-      return;
-    }
-    drawHud(state);
-    if (screen === SCREEN_PAUSED) drawPanel('Paused', PAUSED_LINES, 'Press P to resume');
-    else if (screen === SCREEN_OVER) {
-      OVER_LINES[0] = finalLabel(state.score);
-      OVER_LINES[1] = bestLabel(best);
-      drawPanel('Game over', OVER_LINES, 'Press Space or click to play again');
-    }
-  }
-
-  resize();
-  window.addEventListener('resize', resize);
-  return { draw };
+  return {
+    // One burst of one kind at a point.
+    burst(kind, x, y, z, count) { spawn(kind, x, y, z, count); },
+    // A car going up: fire, sparks and a long smoke column.
+    explode(x, y, z) {
+      spawn('fire', x, y + 0.8, z, 26);
+      spawn('spark', x, y + 1, z, 18);
+      spawn('smoke', x, y + 1.5, z, 14);
+    },
+    // Tyre smoke behind a boosting or sliding car.
+    tyreSmoke(x, y, z) { spawn('smoke', x, y, z, 2); },
+    // Sand kicked up on the beach.
+    sandDust(x, y, z) { spawn('dust', x, y, z, 2); },
+    update: tick,
+    count() { return alive.length; },
+  };
 }

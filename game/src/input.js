@@ -1,92 +1,112 @@
-// Keyboard and mouse input for SOLMARINA.
-// Tracks held keys, mouse-drag camera deltas, wheel zoom and clicks, and
-// offers edge-triggered "just pressed" queries the game loop consumes.
+// SOLMARINA input: keyboard + mouse, sampled once per frame by the loop.
+//
+// Held keys live in one plain object, frame-fresh presses in another, and
+// the pointer state in a third; the loop drains the fresh presses and the
+// pointer deltas at the end of each frame. W/Up and S/Down both count as
+// forward/back, so arrows steer as well as walk; H honks while driving.
+
+const FORWARD_MAP = { KeyW: 'up', ArrowUp: 'up', KeyS: 'down', ArrowDown: 'down' };
+const PAGE_KEYS = new Set(['Space', 'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight']);
 
 export function createInput(canvas) {
-  const keys = new Set();
-  const justPressed = new Set();
-  let mouseDX = 0;
-  let mouseDY = 0;
-  let wheelDelta = 0;
-  let clicked = false;
-  let dragging = false;
-  let lastX = 0;
-  let lastY = 0;
+  const down = Object.create(null);
+  const fresh = Object.create(null);
+  const pointer = { dx: 0, dy: 0, wheel: 0, clicked: false, dragging: false, px: 0, py: 0 };
 
-  const CODE_ALIASES = { KeyW: 'up', ArrowUp: 'up', KeyS: 'down', ArrowDown: 'down' };
-
-  function codeOf(event) {
-    return CODE_ALIASES[event.code] ?? event.code;
+  function codeOf(ev) {
+    return FORWARD_MAP[ev.code] || ev.code;
   }
 
-  window.addEventListener('keydown', (event) => {
-    if (event.repeat) return;
-    const code = codeOf(event);
-    keys.add(code);
-    justPressed.add(code);
-    if (['Space', 'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'].includes(event.code)) {
-      event.preventDefault();
-    }
-  });
-  window.addEventListener('keyup', (event) => keys.delete(codeOf(event)));
-  window.addEventListener('blur', () => keys.clear());
+  function onKeyDown(ev) {
+    if (ev.repeat) return;
+    const code = codeOf(ev);
+    down[code] = true;
+    fresh[code] = true;
+    if (PAGE_KEYS.has(ev.code)) ev.preventDefault();
+  }
 
-  canvas.addEventListener('mousedown', (event) => {
-    dragging = true;
-    lastX = event.clientX;
-    lastY = event.clientY;
-    clicked = true;
-  });
-  window.addEventListener('mouseup', () => { dragging = false; });
-  window.addEventListener('mousemove', (event) => {
-    if (!dragging) return;
-    mouseDX += event.clientX - lastX;
-    mouseDY += event.clientY - lastY;
-    lastX = event.clientX;
-    lastY = event.clientY;
-  });
-  canvas.addEventListener('wheel', (event) => {
-    wheelDelta += event.deltaY;
-    event.preventDefault();
-  }, { passive: false });
-  canvas.addEventListener('contextmenu', (event) => event.preventDefault());
+  function onKeyUp(ev) {
+    delete down[codeOf(ev)];
+  }
+
+  function onBlur() {
+    for (const code of Object.keys(down)) delete down[code];
+  }
+
+  function onMouseDown(ev) {
+    pointer.dragging = true;
+    pointer.px = ev.clientX;
+    pointer.py = ev.clientY;
+    pointer.clicked = true;
+  }
+
+  function onMouseMove(ev) {
+    if (!pointer.dragging) return;
+    pointer.dx += ev.clientX - pointer.px;
+    pointer.dy += ev.clientY - pointer.py;
+    pointer.px = ev.clientX;
+    pointer.py = ev.clientY;
+  }
+
+  function onWheel(ev) {
+    pointer.wheel += ev.deltaY;
+    ev.preventDefault();
+  }
+
+  window.addEventListener('keydown', onKeyDown);
+  window.addEventListener('keyup', onKeyUp);
+  window.addEventListener('blur', onBlur);
+  window.addEventListener('mouseup', () => { pointer.dragging = false; });
+  window.addEventListener('mousemove', onMouseMove);
+  canvas.addEventListener('mousedown', onMouseDown);
+  canvas.addEventListener('wheel', onWheel, { passive: false });
+  canvas.addEventListener('contextmenu', (ev) => ev.preventDefault());
+
+  function axis(negCodes, posCodes) {
+    let value = 0;
+    for (const code of posCodes) if (down[code]) value += 1;
+    for (const code of negCodes) if (down[code]) value -= 1;
+    return value;
+  }
 
   return {
-    isDown(code) { return keys.has(code); },
-    wasPressed(code) { return justPressed.has(code); },
+    isDown(code) { return Boolean(down[code]); },
+    wasPressed(code) { return Boolean(fresh[code]); },
     // Movement axes, -1..1. Forward is W / Up, strafe is A / D — or the
-    // arrow keys, which steer as well as move.
+    // arrow keys, which steer as well as walk.
     moveForward() {
-      return (keys.has('up') ? 1 : 0) - (keys.has('down') ? 1 : 0);
+      return (down.up ? 1 : 0) - (down.down ? 1 : 0);
     },
     moveStrafe() {
-      return (keys.has('KeyD') || keys.has('ArrowRight') ? 1 : 0) - (keys.has('KeyA') || keys.has('ArrowLeft') ? 1 : 0);
+      return axis(['KeyA', 'ArrowLeft'], ['KeyD', 'ArrowRight']);
     },
     takeMouseDelta() {
-      const d = { dx: mouseDX, dy: mouseDY };
-      mouseDX = 0;
-      mouseDY = 0;
-      return d;
+      const out = { dx: pointer.dx, dy: pointer.dy };
+      pointer.dx = 0;
+      pointer.dy = 0;
+      return out;
     },
     takeWheel() {
-      const w = wheelDelta;
-      wheelDelta = 0;
-      return w;
+      const amount = pointer.wheel;
+      pointer.wheel = 0;
+      return amount;
     },
     takeClick() {
-      const c = clicked;
-      clicked = false;
-      return c;
+      const wasClicked = pointer.clicked;
+      pointer.clicked = false;
+      return wasClicked;
     },
     // The weapon wheel: which digit key (1-4) was pressed this frame, or 0.
     // Edge-triggered like wasPressed, so holding a digit does not cycle.
     takeDigit() {
       for (let d = 1; d <= 4; d += 1) {
-        if (justPressed.has(`Digit${d}`)) return d;
+        if (fresh[`Digit${d}`]) return d;
       }
       return 0;
     },
     // Called at the end of every frame: edge triggers live for one frame only.
-    endFrame() { justPressed.clear(); },
+    endFrame() {
+      for (const code of Object.keys(fresh)) delete fresh[code];
+    },
   };
 }
