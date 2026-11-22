@@ -28,6 +28,14 @@ export const CITY = {
   wheelZ: 150,
 };
 
+// The curved coastal road along the beach: a gentle sine that runs the
+// length of the shore, south of the lighthouse and the lifeguard tower.
+// world.js paves it, hud.js draws it on the minimap, and the beach palms
+// keep clear of it. The grid roads are untouched.
+export function coastalRoadZ(x) {
+  return 200 + 6 * Math.sin(x / 40);
+}
+
 export const PLAYER = {
   walkSpeed: 6,
   runSpeed: 10,
@@ -66,6 +74,12 @@ export const WEAPONS = [
     id: 'rifle', name: 'Rifle', damage: 55, magSize: 10, range: 130,
     fireRate: 0.5, spread: 0.005, pellets: 1, price: 900, respect: 50,
   },
+  // The knife: a melee weapon, no ammo, no reload. Short reach, decent
+  // damage. Owned from the start like the pistol, so it is usable at once.
+  {
+    id: 'knife', name: 'Knife', damage: 40, magSize: 0, range: 2.5,
+    fireRate: 0.22, spread: 0, pellets: 1, price: 0, respect: 0, melee: true,
+  },
 ];
 
 export const AMMO_PRICE = 50;
@@ -74,11 +88,12 @@ export const VEST_PRICE = 300;
 
 // The police helicopter: up at four stars, circling the player with a
 // searchlight. It never lands and never stops watching — while it is up,
-// the wanted level cannot fade. At 30 m its body sits above the chase
-// camera's view, so in normal play only the searchlight reads; the staged
-// chase shot frames it with a special camera.
+// the wanted level cannot fade. At 20 m it flies low enough to sit
+// clearly inside the staged chase camera's frame (well below the top
+// edge), over the open avenue, instead of riding high near the top of
+// the frame; the staged chase shot frames it with a special camera.
 export const HELI = {
-  altitude: 30,
+  altitude: 20,
   followSpeed: 26,
   cruiseSpeed: 34,
   rotorSpeed: 22,

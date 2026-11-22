@@ -10,7 +10,12 @@ export function createAudio() {
   const rig = {
     ctx: null,
     master: null,
+    music: null,
+    sfx: null,
     muted: false,
+    masterVol: 0.5,
+    musicVol: 1.0,
+    sfxVol: 1.0,
     noiseBuf: null,
     drive: null,
     wail: null,
@@ -31,8 +36,17 @@ export function createAudio() {
       if (!Ctor) return false;
       rig.ctx = new Ctor();
       rig.master = rig.ctx.createGain();
-      rig.master.gain.value = 0.5;
+      rig.master.gain.value = rig.muted ? 0 : rig.masterVol;
       rig.master.connect(rig.ctx.destination);
+      // Two sub-buses under the master, so Music and SFX have their own
+      // volume sliders: the radio (pad + sequencer) rides the music bus,
+      // every one-shot and continuous effect rides the SFX bus.
+      rig.music = rig.ctx.createGain();
+      rig.music.gain.value = rig.musicVol;
+      rig.music.connect(rig.master);
+      rig.sfx = rig.ctx.createGain();
+      rig.sfx.gain.value = rig.sfxVol;
+      rig.sfx.connect(rig.master);
     } catch (err) {
       return false;
     }
@@ -79,7 +93,7 @@ export function createAudio() {
       tail = filt;
     }
     tail.connect(env);
-    env.connect(spec.dest || rig.master);
+    env.connect(spec.dest || rig.sfx || rig.master);
     osc.start(t0);
     osc.stop(t0 + spec.dur + 0.05);
     return osc;
@@ -101,7 +115,7 @@ export function createAudio() {
     env.gain.exponentialRampToValueAtTime(0.001, t0 + spec.dur);
     src.connect(filt);
     filt.connect(env);
-    env.connect(rig.master);
+    env.connect(spec.dest || rig.sfx || rig.master);
     src.start(t0);
     src.stop(t0 + spec.dur + 0.05);
   }
@@ -181,7 +195,7 @@ export function createAudio() {
     const def = STATIONS[((index % STATIONS.length) + STATIONS.length) % STATIONS.length];
     const padBus = rig.ctx.createGain();
     padBus.gain.value = def.padVol;
-    padBus.connect(rig.master);
+    padBus.connect(rig.music || rig.master);
     const pad = [];
     // The pad is a chord of slightly detuned pairs: two oscillators per
     // tone, one a few cents sharp, so the station hums instead of droning.
@@ -207,17 +221,17 @@ export function createAudio() {
       if (def.talk) {
         const count = 2 + Math.floor(Math.random() * 2);
         for (let i = 0; i < count; i += 1) {
-          voice({ note: 50 + Math.floor(Math.random() * 8), delay: i * 0.09, dur: 0.07, type: 'square', vol: 0.05 });
+          voice({ note: 50 + Math.floor(Math.random() * 8), delay: i * 0.09, dur: 0.07, type: 'square', vol: 0.05, dest: rig.music });
         }
-        voice({ note: def.bass[slot], dur: 0.22, type: 'triangle', vol: 0.1 });
+        voice({ note: def.bass[slot], dur: 0.22, type: 'triangle', vol: 0.1, dest: rig.music });
       } else {
-        voice({ note: def.bass[slot], dur: 0.22, type: 'triangle', vol: 0.16 });
+        voice({ note: def.bass[slot], dur: 0.22, type: 'triangle', vol: 0.16, dest: rig.music });
         const leadNote = def.lead[slot];
         if (leadNote !== null && leadNote !== undefined) {
-          voice({ note: leadNote, dur: 0.18, type: 'sine', vol: 0.1 });
+          voice({ note: leadNote, dur: 0.18, type: 'sine', vol: 0.1, dest: rig.music });
         }
         if (seq.step % 2 === 0) {
-          burst({ dur: 0.05, vol: 0.05, cutoff: 6000, filterType: 'highpass' });
+          burst({ dur: 0.05, vol: 0.05, cutoff: 6000, filterType: 'highpass', dest: rig.music });
         }
       }
       seq.step += 1;
@@ -243,7 +257,7 @@ export function createAudio() {
       growl.connect(filt);
       sub.connect(filt);
       filt.connect(out);
-      out.connect(rig.master);
+      out.connect(rig.sfx || rig.master);
       growl.start();
       sub.start();
       rig.drive = { growl, sub, filt, out };
@@ -281,7 +295,7 @@ export function createAudio() {
       const out = rig.ctx.createGain();
       out.gain.value = 0;
       toneOsc.connect(out);
-      out.connect(rig.master);
+      out.connect(rig.sfx || rig.master);
       toneOsc.start();
       lfo.start();
       rig.wail = { out };
@@ -298,11 +312,29 @@ export function createAudio() {
     },
     setMuted(value) {
       rig.muted = value;
-      if (rig.master) rig.master.gain.value = rig.muted ? 0 : 0.5;
+      if (rig.master) rig.master.gain.value = rig.muted ? 0 : rig.masterVol;
       if (rig.muted) killRadio();
       else if (rig.ctx && !rig.radio) tuneRadio(0);
     },
     isMuted() { return rig.muted; },
+    // Volume sliders (0..1). The value is stored on the rig even before
+    // the AudioContext exists, so settings applied at startup land as
+    // soon as the first user gesture builds the graph.
+    setMasterVolume(value) {
+      rig.masterVol = Math.max(0, Math.min(1, value));
+      if (rig.master && !rig.muted) rig.master.gain.value = rig.masterVol;
+    },
+    setMusicVolume(value) {
+      rig.musicVol = Math.max(0, Math.min(1, value));
+      if (rig.music) rig.music.gain.value = rig.musicVol;
+    },
+    setSfxVolume(value) {
+      rig.sfxVol = Math.max(0, Math.min(1, value));
+      if (rig.sfx) rig.sfx.gain.value = rig.sfxVol;
+    },
+    masterVolume() { return rig.masterVol; },
+    musicVolume() { return rig.musicVol; },
+    sfxVolume() { return rig.sfxVol; },
     stationCount() { return STATIONS.length; },
     startStation(index) { tuneRadio(index); },
     stopStation() { killRadio(); },
@@ -324,7 +356,7 @@ export function createAudio() {
       env.gain.setValueAtTime(0.16, t0);
       env.gain.exponentialRampToValueAtTime(0.001, t0 + (dur || 0.22));
       osc.connect(env);
-      env.connect(rig.master);
+      env.connect(rig.sfx || rig.master);
       osc.start(t0);
       osc.stop(t0 + (dur || 0.22) + 0.05);
     },
@@ -338,7 +370,7 @@ export function createAudio() {
       env.gain.setValueAtTime(0.1, t0);
       env.gain.exponentialRampToValueAtTime(0.001, t0 + (dur || 0.18));
       osc.connect(env);
-      env.connect(rig.master);
+      env.connect(rig.sfx || rig.master);
       osc.start(t0);
       osc.stop(t0 + (dur || 0.18) + 0.05);
     },
@@ -353,7 +385,7 @@ export function createAudio() {
         env.gain.setValueAtTime(0.04, t0);
         env.gain.exponentialRampToValueAtTime(0.001, t0 + (dur || 1.5));
         osc.connect(env);
-        env.connect(rig.master);
+        env.connect(rig.sfx || rig.master);
         osc.start(t0);
         osc.stop(t0 + (dur || 1.5) + 0.05);
       }

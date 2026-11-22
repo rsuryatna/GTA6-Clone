@@ -12,8 +12,9 @@ export function createShop() {
 
   // Every item the shop can sell, with its price and the respect it needs.
   function stockList() {
-    // The pistol is never listed: Jules starts with it and it has no price.
-    const weapons = WEAPONS.filter((weapon) => weapon.id !== 'pistol').map((weapon) => ({
+    // The pistol and the knife are never listed: Jules starts with both
+    // and neither has a price.
+    const weapons = WEAPONS.filter((weapon) => weapon.id !== 'pistol' && weapon.id !== 'knife').map((weapon) => ({
       kind: 'weapon',
       id: weapon.id,
       name: weapon.name,

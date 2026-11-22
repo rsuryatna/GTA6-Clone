@@ -69,6 +69,12 @@ export function createPolice(scene, world, rng, callbacks) {
   // modeClock counts down the swing; ramWait / pitWait are cooldowns.
   const fleet = [];
   let strobe = 0;
+  let fleetHeld = false;
+  // Held for a staged shot: when true, the cruisers stay exactly where
+  // the staging put them (driveUnit returns their distance without
+  // moving or turning them), so the frame the shot composes is the frame
+  // the screenshot takes. Only the shot staging sets it, after placing
+  // the cruisers; real play never holds the fleet.
 
   function nearestStreetLine(x, z) {
     // Which street line is closest, and does that street run along z
@@ -137,6 +143,11 @@ export function createPolice(scene, world, rng, callbacks) {
     const dx = target.x - pos.x;
     const dz = target.z - pos.z;
     const dist = Math.hypot(dx, dz);
+    // Held for a staged shot: report the distance but do not drive or
+    // turn, so a placed cruiser keeps its pose (and its door POLICE
+    // keeps facing the camera) through the screenshot wait. The strobes
+    // still flash and the bust check still reads the distance.
+    if (fleetHeld) return dist;
     if (unit.ramWait > 0) unit.ramWait -= dt;
     if (unit.pitWait > 0) unit.pitWait -= dt;
     if (unit.modeClock > 0) unit.modeClock -= dt;
@@ -196,9 +207,22 @@ export function createPolice(scene, world, rng, callbacks) {
 
   function flashLightbars(dt) {
     // The light bars strobe red/blue; each cruiser is slightly out of
-    // phase with the others so the chase does not blink in unison.
+    // phase with the others so the chase does not blink in unison. The
+    // two-colour bar lights its red half and its blue half alternately:
+    // the lit half burns bright while the other dims — but the dim half
+    // stays a mid-tone, not near-black, so a still frame shows BOTH
+    // colours on every cruiser and two cruisers in opposite phases read
+    // one red, one blue.
     strobe += dt;
     for (const unit of fleet) {
+      const redLens = unit.mesh.getObjectByName('lightbar-red');
+      const blueLens = unit.mesh.getObjectByName('lightbar-blue');
+      if (redLens && blueLens) {
+        const red = Math.floor((strobe + unit.strobeOffset) * 6) % 2 === 0;
+        redLens.material.color.setHex(red ? 0xff2222 : 0x992222);
+        blueLens.material.color.setHex(red ? 0x3355cc : 0x2266ff);
+        continue;
+      }
       const bar = unit.mesh.getObjectByName('lightbar');
       if (!bar) continue;
       const red = Math.floor((strobe + unit.strobeOffset) * 6) % 2 === 0;
@@ -213,32 +237,68 @@ export function createPolice(scene, world, rng, callbacks) {
 
   function buildAirUnit() {
     const rig = new THREE.Group();
-    const navy = new THREE.MeshLambertMaterial({ color: PALETTE.police });
+    // A JetRanger-style American police helicopter: a rounded
+    // bubble-canopy fuselage in the black-and-white police livery, a
+    // slim tapered tail boom, a taller fin and skids under the bubble.
+    // Side "POLICE" lettering is skipped on purpose: at the 160 m
+    // staging distance the letters would be ~2 px tall in the
+    // screenshot, so the livery and the bubble canopy carry the police
+    // read instead. Flight behaviour is untouched — only the shape.
+    const black = new THREE.MeshLambertMaterial({ color: 0x141414 });
+    const white = new THREE.MeshLambertMaterial({ color: 0xf2f2f2 });
     const dark = new THREE.MeshLambertMaterial({ color: 0x141414 });
-    const glass = new THREE.MeshLambertMaterial({ color: 0x1a2733 });
+    const glass = new THREE.MeshPhongMaterial({
+      color: 0x5a8ab0, shininess: 90, transparent: true, opacity: 0.85,
+    });
 
-    const body = new THREE.Mesh(new THREE.BoxGeometry(3.2, 1.4, 1.8), navy);
-    body.castShadow = true;
-    rig.add(body);
-    const nose = new THREE.Mesh(new THREE.BoxGeometry(1.6, 0.9, 1.7), glass);
-    nose.position.set(0, 0.2, 0.9);
-    rig.add(nose);
-    const boom = new THREE.Mesh(new THREE.BoxGeometry(0.5, 0.5, 4.2), navy);
-    boom.position.set(0, 0.3, -2.8);
+    // Rounded fuselage: an ellipsoid cabin, black, with a white roof.
+    const cabin = new THREE.Mesh(new THREE.SphereGeometry(1, 20, 14), black);
+    cabin.scale.set(0.85, 0.7, 1.05);
+    cabin.castShadow = true;
+    rig.add(cabin);
+    const roof = new THREE.Mesh(new THREE.SphereGeometry(1, 20, 14), white);
+    roof.scale.set(0.8, 0.28, 0.95);
+    roof.position.set(0, 0.55, -0.15);
+    rig.add(roof);
+    // The bubble canopy: a rounded glass nose, the JetRanger's signature.
+    const bubble = new THREE.Mesh(new THREE.SphereGeometry(0.95, 20, 14), glass);
+    bubble.scale.set(0.95, 0.85, 1.0);
+    bubble.position.set(0, 0.05, 1.0);
+    rig.add(bubble);
+    // Slim tapered tail boom (thick at the cabin, thin at the tail),
+    // white, with a taller fin and a horizontal stabiliser.
+    const boomGeo = new THREE.CylinderGeometry(0.32, 0.16, 4.6, 10);
+    boomGeo.rotateX(Math.PI / 2);
+    const boom = new THREE.Mesh(boomGeo, white);
+    boom.position.set(0, 0.15, -3.1);
+    boom.castShadow = true;
     rig.add(boom);
-    const fin = new THREE.Mesh(new THREE.BoxGeometry(0.2, 1.2, 0.8), navy);
-    fin.position.set(0, 0.7, -4.6);
+    const fin = new THREE.Mesh(new THREE.BoxGeometry(0.15, 1.6, 0.9), black);
+    fin.position.set(0, 0.6, -5.3);
     rig.add(fin);
-    const blades = new THREE.Mesh(new THREE.BoxGeometry(9, 0.08, 0.5), dark);
-    blades.position.y = 1.1;
+    const stabilizer = new THREE.Mesh(new THREE.BoxGeometry(1.7, 0.08, 0.45), white);
+    stabilizer.position.set(0, 0.25, -5.0);
+    rig.add(stabilizer);
+    // Rotor mast and main blades on top.
+    const mast = new THREE.Mesh(new THREE.CylinderGeometry(0.12, 0.14, 0.5, 8), dark);
+    mast.position.set(0, 0.85, 0);
+    rig.add(mast);
+    const blades = new THREE.Mesh(new THREE.BoxGeometry(9, 0.06, 0.5), dark);
+    blades.position.y = 1.15;
     rig.add(blades);
-    const tailBlades = new THREE.Mesh(new THREE.BoxGeometry(0.08, 1.6, 0.3), dark);
-    tailBlades.position.set(0.35, 0.7, -4.6);
+    const tailBlades = new THREE.Mesh(new THREE.BoxGeometry(0.08, 1.4, 0.25), dark);
+    tailBlades.position.set(0.3, 0.6, -5.3);
     rig.add(tailBlades);
-    for (const side of [-1.2, 1.2]) {
-      const skid = new THREE.Mesh(new THREE.BoxGeometry(0.15, 0.15, 2.6), dark);
-      skid.position.set(side, -0.95, 0);
+    // Landing skids under the bubble canopy, on short struts.
+    for (const side of [-1.05, 1.05]) {
+      const skid = new THREE.Mesh(new THREE.BoxGeometry(0.12, 0.12, 2.8), dark);
+      skid.position.set(side, -1.0, 0.3);
       rig.add(skid);
+      for (const sz of [-0.3, 0.9]) {
+        const strut = new THREE.Mesh(new THREE.BoxGeometry(0.08, 0.5, 0.08), dark);
+        strut.position.set(side, -0.7, sz);
+        rig.add(strut);
+      }
     }
 
     // Searchlight: a real spotlight plus a faint translucent cone so
@@ -280,6 +340,24 @@ export function createPolice(scene, world, rng, callbacks) {
       air.rig.visible = false;
     }
     if (!air.flying) return;
+    if (air.held) {
+      // Parked for a staged shot: hold the position (no orbit drift, so
+      // the helicopter stays where the staging put it through the
+      // screenshot wait), keep the rotor spinning and the searchlight
+      // pinned on the player.
+      air.blades.rotation.y += HELI.rotorSpeed * dt;
+      // The lamp target is rig-local: y is the drop from the helicopter
+      // to the ground, so it follows the rig's actual altitude (a staged
+      // shot may fly lower than HELI.altitude) and the beam stays pinned
+      // on the player at ground level.
+      air.lamp.target.position.set(
+        target.x - air.rig.position.x,
+        -air.rig.position.y,
+        target.z - air.rig.position.z,
+      );
+      air.lamp.target.updateMatrixWorld();
+      return;
+    }
     // Circle the player, easing toward the next orbit point rather than
     // chasing it at a fixed speed, so the motion stays smooth.
     air.phase += dt * 0.35;
@@ -514,18 +592,21 @@ export function createPolice(scene, world, rng, callbacks) {
     syncFleet(stars);
 
     let nearest = Infinity;
+    let nearestUnit = null;
     for (const unit of fleet) {
       const d = driveUnit(unit, dt, playerPos, playerSpeed, playerInCar);
-      if (d < nearest) nearest = d;
+      if (d < nearest) { nearest = d; nearestUnit = unit; }
     }
     flashLightbars(dt);
 
-    // Busted: a cruiser pins a slow or stationary player.
+    // Busted: a cruiser pins a slow or stationary player. The caller
+    // gets the arresting cruiser, so an officer can step out of it and
+    // cuff the player before the BUSTED screen.
     if (stars > 0 && nearest < POLICE.bustRadius && playerSpeed < 3) {
       pinnedFor += dt;
       if (pinnedFor > POLICE.bustTime) {
         pinnedFor = 0;
-        onBusted();
+        onBusted(nearestUnit);
       }
     } else {
       pinnedFor = Math.max(0, pinnedFor - dt * 2);
@@ -553,6 +634,33 @@ export function createPolice(scene, world, rng, callbacks) {
     setWanted(next) { setStars(next); },
     cruiserCount() { return fleet.length; },
     heliActive() { return air.flying; },
+    // The cruiser closest to a point, for the arrest scene (an officer
+    // steps out of it) and for debug hooks.
+    nearestUnit(x, z) {
+      let best = null;
+      let bestDist = Infinity;
+      for (const unit of fleet) {
+        const d = Math.hypot(unit.mesh.position.x - x, unit.mesh.position.z - z);
+        if (d < bestDist) { bestDist = d; best = unit; }
+      }
+      return best;
+    },
+    // Staging helper (shootout proof shot): the cruiser nearest to a
+    // point that lies ahead of it (north, smaller z) by at least
+    // minAhead — so Jules aims at a cruiser in front of him, not the
+    // foreground cruiser parked level with him (3 m away, beside him).
+    nearestUnitAhead(x, z, minAhead) {
+      let best = null;
+      let bestDist = Infinity;
+      const ahead = minAhead || 8;
+      for (const unit of fleet) {
+        const dz = z - unit.mesh.position.z;
+        if (dz < ahead) continue;
+        const d = Math.hypot(unit.mesh.position.x - x, unit.mesh.position.z - z);
+        if (d < bestDist) { bestDist = d; best = unit; }
+      }
+      return best;
+    },
     roadblockCount() { return barricades.length; },
     spikeStripCount() { return strips.length; },
     onSpikes,
@@ -570,16 +678,54 @@ export function createPolice(scene, world, rng, callbacks) {
       best.heading = heading;
       best.speed = 20;
     },
+    // Staging helper for the ?shot=chase screenshot: place a chosen
+    // cruiser (by fleet index) at a spot, so two cruisers can be framed
+    // at once. A missing index is a no-op. The mesh rotation is set
+    // here too, not just the heading: driveUnit only copies heading
+    // into mesh.rotation.y while the cruiser is driving, and a held
+    // fleet (holdFleet) returns before that line — so without this
+    // the mesh keeps its settle-time rotation and the placed heading
+    // never shows. With it, a crosswise cruiser's white door POLICE
+    // faces the camera exactly as the staging intends, and a head-on
+    // cruiser's front and light bar face the camera.
+    placeAt(index, x, z, heading) {
+      const unit = fleet[index];
+      if (!unit) return;
+      unit.mesh.position.set(x, 0, z);
+      unit.heading = heading;
+      unit.mesh.rotation.y = heading;
+      unit.speed = 20;
+    },
+    // Staging helper for the ?shot=chase screenshot: set the cruisers'
+    // strobe offsets so neighbours sit in opposite phases — one reads
+    // red while the next reads blue in the same still frame. Offsets
+    // half a strobe period apart (1/6 s) flip the phase.
+    staggerStrobes() {
+      for (let i = 0; i < fleet.length; i += 1) {
+        fleet[i].strobeOffset = (i % 2) * (1 / 6);
+      }
+    },
     // Staging helper: park the helicopter over a chosen spot for the
     // shot, and aim its orbit at the player (px/pz) so it holds there
-    // instead of drifting back to its old orbit phase.
-    placeHeli(x, z, px = 0, pz = 0) {
+    // instead of drifting back to its old orbit phase. The helicopter
+    // is HELD there: the orbit easing is off, so it stays exactly
+    // where it was parked through the screenshot wait. alt overrides
+    // the cruise altitude for the shot only (a staged shot flies it
+    // lower so it reads centred in the frame); normal play keeps
+    // HELI.altitude.
+    placeHeli(x, z, px = 0, pz = 0, alt = HELI.altitude) {
       if (!air.flying) {
         air.flying = true;
         air.rig.visible = true;
       }
-      air.rig.position.set(x, HELI.altitude, z);
+      air.rig.position.set(x, alt, z);
       air.phase = Math.atan2(z - pz, x - px);
+      air.held = true;
+    },
+    // Staging helper: hold the whole fleet where the staging put it, so
+    // a placed cruiser keeps its pose through the screenshot wait.
+    holdFleet() {
+      fleetHeld = true;
     },
   };
 }

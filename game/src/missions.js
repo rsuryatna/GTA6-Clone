@@ -244,6 +244,17 @@ function makeBeacon(scene) {
 export function createMissions(scene, callbacks) {
   const beacon = makeBeacon(scene);
 
+  // Staging suppression (round 9): when true the beacon stays hidden —
+  // pointBeacon and trackMovingTarget both respect it, and setting it
+  // hides the shaft immediately. Only a screenshot preset sets this;
+  // real gameplay never does, so the beacon still marks the objective
+  // in every real game.
+  let beaconSuppressed = false;
+  function setBeaconSuppressed(suppressed) {
+    beaconSuppressed = suppressed;
+    if (suppressed) beacon.group.visible = false;
+  }
+
   // The whole run in one record: which job, which step inside it, how far
   // the two step clocks have filled, and whether the story is still live.
   const run = {
@@ -281,6 +292,15 @@ export function createMissions(scene, callbacks) {
   }
 
   function pointBeacon() {
+    // Staging suppression (round 9): a screenshot preset can hide the
+    // beacon for its frame — the gold shaft is a gameplay marker, not
+    // city scenery, and in the 4-city Sore shot it stood at the end of
+    // the avenue as a bright vertical streak. The flag is only ever set
+    // by a staging preset; real gameplay never suppresses the beacon.
+    if (beaconSuppressed) {
+      beacon.group.visible = false;
+      return;
+    }
     const target = resolveTarget();
     if (!target) {
       beacon.group.visible = false;
@@ -304,6 +324,7 @@ export function createMissions(scene, callbacks) {
   // While a tail or wreck step is live, glue the beacon to the rival car
   // itself as it drives, instead of leaving it where the step began.
   function trackMovingTarget(facts) {
+    if (beaconSuppressed) return;
     const step = activeStep();
     if (!step) return;
     if ((step.type === 'follow' || step.type === 'destroy') && facts.rival) {
@@ -387,6 +408,26 @@ export function createMissions(scene, callbacks) {
     return Math.max(0, step.seconds - run[which]);
   }
 
+  // The minimap marker: the active target when it has a place, else
+  // the next located step of the current job. A location-free step
+  // (Job 1's "steal a car", a pickup, a hold) has no coordinates, so
+  // the minimap would otherwise show no objective at all — but the
+  // job still has a destination (the marina marker), and the GTA
+  // minimap always points at where the player is headed. The beacon
+  // and the step logic keep using resolveTarget; only the minimap
+  // falls back, so the objective itself never moves.
+  function mapTargetPosition() {
+    const direct = resolveTarget();
+    if (direct) return direct;
+    const job = activeJob();
+    if (!job) return null;
+    for (let s = run.step + 1; s < job.steps.length; s += 1) {
+      const step = job.steps[s];
+      if (step.x !== undefined) return { x: step.x, z: step.z };
+    }
+    return null;
+  }
+
   function targetPosition() {
     return resolveTarget();
   }
@@ -408,6 +449,7 @@ export function createMissions(scene, callbacks) {
     start,
     update,
     placeBeacon: pointBeacon,
+    setBeaconSuppressed,
     current: activeJob,
     step: activeStep,
     getIndex() { return run.job; },
@@ -420,6 +462,7 @@ export function createMissions(scene, callbacks) {
     isActive() { return run.live; },
     setProgress,
     targetPosition,
+    mapTargetPosition,
     missionCount() { return JOBS.length; },
   };
 }

@@ -96,10 +96,10 @@ export function createInput(canvas) {
       pointer.clicked = false;
       return wasClicked;
     },
-    // The weapon wheel: which digit key (1-4) was pressed this frame, or 0.
+    // The weapon wheel: which digit key (1-5) was pressed this frame, or 0.
     // Edge-triggered like wasPressed, so holding a digit does not cycle.
     takeDigit() {
-      for (let d = 1; d <= 4; d += 1) {
+      for (let d = 1; d <= 5; d += 1) {
         if (fresh[`Digit${d}`]) return d;
       }
       return 0;

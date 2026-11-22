@@ -7,9 +7,11 @@
 // default instead of breaking the load. Version 3 adds the lifetime stats
 // block (jobs done, cars stolen, times busted) and the vest; version 2
 // added respect, the weapon wheel, the garage and the radio station.
+// Version 4 adds the time of day, so Continue resumes at the saved
+// hour instead of resetting to morning.
 
 export const SAVE_KEY = 'solmarina.save.v1';
-export const SAVE_VERSION = 3;
+export const SAVE_VERSION = 4;
 
 // Field name -> fallback value, in the order the normalised save carries them.
 const NUMBER_FIELDS = [
@@ -21,6 +23,7 @@ const NUMBER_FIELDS = [
   ['z', -40],
   ['wanted', 0],
   ['respect', 0],
+  ['timeOfDay', 7],
 ];
 
 const STAT_FIELDS = [

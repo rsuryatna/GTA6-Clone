@@ -22,7 +22,7 @@ const repoRoot = fileURLToPath(new URL(".", import.meta.url));
 const destDir = process.env.MAKEFUN_OUTPUT_DIR ?? "/output";
 
 // The four pictures the judge looks at, in the order shots.json lists them.
-const EXPECTED_SHOTS = ["1-hero.jpg", "2-mission.jpg", "3-chase.jpg", "4-city.jpg"];
+const EXPECTED_SHOTS = ["1-hero.jpg", "2-title.jpg", "3-chase.jpg", "4-city.jpg"];
 
 function fail(message: string): never {
   throw new Error(`main.ts: ${message}`);

@@ -44,7 +44,10 @@ That copies `game/` and `screenshots/` into `out/` and writes
 - **Five stars of heat.** The Solmarina PD chases, rams and busts you.
   Three stars bring roadblocks across the road ahead; four stars bring a
   police helicopter circling with its searchlight; five stars bring spike
-  strips and PIT maneuvers that spin your car around.
+  strips and PIT maneuvers that spin your car around. At two stars and up,
+  uniformed officers chase you on foot — and when one catches you, or a
+  cruiser pins you, an officer steps out, walks over and handcuffs you
+  before the BUSTED screen.
 - **Steal anything with wheels.** Take a parked car, or yank a driver out of
   a moving one. Cars have health: ram a wall hard enough and yours catches
   fire and blows.
@@ -68,10 +71,14 @@ the sea, the Solmarina Trust bank, a turning ferris wheel, and a marina pier
 with a boat bobbing at its end. Fourteen traffic cars drive the avenues and
 yield to police; twenty-six pedestrians stroll, panic, flee, and call the
 police when they watch a crime. Traffic lights cycle at the intersections.
+The city runs a full day/night cycle — Pagi, Siang, Sore and Malam over a
+twelve-minute day, the light, sky and fog blending smoothly between them.
+At night the street lanterns glow, building windows light up, car headlights
+brighten and stars come out, and the HUD clock shows the time and the phase.
 The HUD shows cash, health, wanted stars, the mission objective, a live
 minimap, a NOS meter, the driven car's health, and a countdown for timed
 steps. Progress saves to the browser, so quitting mid-story keeps your jobs,
-cash, and garage.
+cash, and garage — and Continue resumes at the saved time of day.
 
 ## Controls
 
@@ -82,14 +89,15 @@ the camera · P pause · M mute
 ## Screenshots
 
 The four entry pictures live under `screenshots/` (1280×720 each, taken from
-the running game). You can stage each one yourself:
+the running game). Each one shows a different phase of the day/night cycle.
+You can stage each one yourself:
 
-| Picture | URL |
-| --- | --- |
-| 1-hero.jpg | `http://localhost:8080/?shot=hero` |
-| 2-mission.jpg | `http://localhost:8080/?shot=mission` |
-| 3-chase.jpg | `http://localhost:8080/?shot=chase` |
-| 4-city.jpg | `http://localhost:8080/?shot=city` |
+| Picture | Phase | URL |
+| --- | --- | --- |
+| 1-hero.jpg | Siang — five-star chase, one car burning | `http://localhost:8080/?shot=chase` |
+| 2-title.jpg | Sore — the title screen's sunset | New title screen (fresh, no save) — captured by `title-shot.mjs`, no `?shot=` preset |
+| 3-chase.jpg | Malam — on-foot chase at night | `http://localhost:8080/?shot=hero` |
+| 4-city.jpg | Sore — shootout with the police at dusk | `http://localhost:8080/?shot=shootout` |
 
 ## For developers
 
