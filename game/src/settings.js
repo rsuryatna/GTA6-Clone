@@ -1,83 +1,57 @@
-// Settings for SOLMARINA: sound volumes, graphics quality, shadows and
-// mouse sensitivity, kept in their own localStorage key so they survive
-// reloads and never touch the game save (solmarina.save.v1).
-//
-// The key name never changes and the payload is versioned, so an old or
-// hand-edited settings blob still loads: every field is rebuilt from a
-// defaults table, and anything missing or mistyped falls back to its
-// default instead of breaking the load.
+// SOLMARINA — settings.js
+// One job: player-facing settings with safe defaults, persisted locally.
+// Quality here only changes pixel ratio and crowd density, never the rules.
 
-export const SETTINGS_KEY = 'solmarina.settings.v1';
-export const SETTINGS_VERSION = 1;
+export const DEFAULT_SETTINGS = {
+  quality: 'high', // low | medium | high
+  musicVolume: 0.5,
+  sfxVolume: 0.7,
+  radioStation: 0,
+  cameraDistance: 9,
+  showMinimap: true,
+  showHints: true,
+  invertY: false,
+};
 
-export const QUALITIES = ['low', 'medium', 'high'];
+const KEY = 'solmarina-settings-v1';
 
-// Field name -> fallback value, in the order the normalised settings carry them.
-const NUMBER_FIELDS = [
-  ['masterVolume', 50],
-  ['musicVolume', 100],
-  ['sfxVolume', 100],
-  ['sensitivity', 1.0],
-];
-
-function asNumber(value, fallback) {
-  return typeof value === 'number' && Number.isFinite(value) ? value : fallback;
-}
-
-function clampNumber(value, low, high, fallback) {
-  const n = asNumber(value, fallback);
-  return Math.max(low, Math.min(high, n));
-}
-
-function asBool(value, fallback) {
-  return typeof value === 'boolean' ? value : fallback;
-}
-
-function asObject(value) {
-  return value !== null && typeof value === 'object' ? value : null;
-}
-
-export function normalizeSettings(data) {
-  const src = asObject(data) || {};
-  const out = {};
-  out.masterVolume = clampNumber(src.masterVolume, 0, 100, 50);
-  out.musicVolume = clampNumber(src.musicVolume, 0, 100, 100);
-  out.sfxVolume = clampNumber(src.sfxVolume, 0, 100, 100);
-  out.sensitivity = clampNumber(src.sensitivity, 0.5, 2, 1.0);
-  out.muted = asBool(src.muted, false);
-  out.shadows = asBool(src.shadows, true);
-  // Quality is a word, not a number: anything unknown falls back to high.
-  out.quality = QUALITIES.includes(src.quality) ? src.quality : 'high';
-  out.version = SETTINGS_VERSION;
+export function loadSettings() {
+  const out = { ...DEFAULT_SETTINGS };
+  try {
+    const raw = localStorage.getItem(KEY);
+    if (!raw) return out;
+    const saved = JSON.parse(raw);
+    for (const k of Object.keys(DEFAULT_SETTINGS)) {
+      if (saved[k] !== undefined) out[k] = saved[k];
+    }
+  } catch (err) {
+    console.warn('settings: could not load saved settings', err);
+  }
   return out;
 }
 
-export function defaultSettings() {
-  return normalizeSettings(null);
+export function saveSettings(settings) {
+  try {
+    localStorage.setItem(KEY, JSON.stringify(settings));
+  } catch (err) {
+    console.warn('settings: could not save settings', err);
+  }
 }
 
-export function loadSettings() {
-  let raw = null;
-  try {
-    raw = window.localStorage.getItem(SETTINGS_KEY);
-  } catch {
-    return null;
-  }
-  if (!raw) return null;
-  let parsed = null;
-  try {
-    parsed = JSON.parse(raw);
-  } catch {
-    return null;
-  }
-  return asObject(parsed);
+export function pixelRatioFor(quality) {
+  if (quality === 'low') return Math.min(window.devicePixelRatio || 1, 1);
+  if (quality === 'medium') return Math.min(window.devicePixelRatio || 1, 1.5);
+  return Math.min(window.devicePixelRatio || 1, 2);
 }
 
-export function writeSettings(data) {
-  try {
-    window.localStorage.setItem(SETTINGS_KEY, JSON.stringify(data));
-  } catch {
-    return false;
-  }
-  return true;
+export function crowdScaleFor(quality) {
+  if (quality === 'low') return 0.55;
+  if (quality === 'medium') return 0.8;
+  return 1;
+}
+
+// Clamp a volume slider into the range the audio engine expects.
+export function clampVolume(v) {
+  if (typeof v !== 'number' || Number.isNaN(v)) return 0.5;
+  return Math.max(0, Math.min(1, v));
 }

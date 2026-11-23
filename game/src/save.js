@@ -1,93 +1,78 @@
-// Save and load for SOLMARINA: one localStorage key holds cash, mission
-// progress, health and where the player stood, so Continue resumes the story.
-//
-// The save is versioned in the payload (SAVE_VERSION) and the key name
-// never changes, so an old save still loads: every field is rebuilt from a
-// defaults table, and anything missing or mistyped falls back to its
-// default instead of breaking the load. Version 3 adds the lifetime stats
-// block (jobs done, cars stolen, times busted) and the vest; version 2
-// added respect, the weapon wheel, the garage and the radio station.
-// Version 4 adds the time of day, so Continue resumes at the saved
-// hour instead of resetting to morning.
+// SOLMARINA — save.js
+// One job: persist Jules's progress — cash, health, mission index, position
+// and the clock — to localStorage, and bring it back. A save never carries
+// a screenshot or a transcript; it is just numbers.
 
-export const SAVE_KEY = 'solmarina.save.v1';
-export const SAVE_VERSION = 4;
+import { CFG } from './config.js';
 
-// Field name -> fallback value, in the order the normalised save carries them.
-const NUMBER_FIELDS = [
-  ['cash', 150],
-  ['missionIndex', 0],
-  ['health', 100],
-  ['vest', 0],
-  ['x', 0],
-  ['z', -40],
-  ['wanted', 0],
-  ['respect', 0],
-  ['timeOfDay', 7],
-];
-
-const STAT_FIELDS = [
-  ['jobsDone', 0],
-  ['carsStolen', 0],
-  ['timesBusted', 0],
-  ['timesWasted', 0],
-];
-
-function asNumber(value, fallback) {
-  return typeof value === 'number' ? value : fallback;
-}
-
-function asObject(value) {
-  return value !== null && typeof value === 'object' ? value : null;
-}
-
-function buildFromTable(source, table) {
-  const out = {};
-  for (const [key, fallback] of table) out[key] = asNumber(source[key], fallback);
-  return out;
-}
-
-export function normalizeSave(data) {
-  const src = asObject(data) || {};
-  const out = buildFromTable(src, NUMBER_FIELDS);
-  out.weapons = asObject(src.weapons);
-  out.garage = asObject(src.garage);
-  out.radioStation = asNumber(src.radioStation, 0);
-  out.stats = buildFromTable(asObject(src.stats) || {}, STAT_FIELDS);
-  out.version = SAVE_VERSION;
-  return out;
-}
-
-export function loadSave() {
-  let raw = null;
+export function saveGame(ctx) {
+  const { player, missions, daynight, police } = ctx;
+  const data = {
+    version: 1,
+    savedAt: new Date().toISOString(),
+    cash: player.cash,
+    health: player.health,
+    missionIndex: missions.index,
+    missionsCompleted: missions.completed,
+    wanted: police.wanted,
+    position: { x: player.position.x, z: player.position.z },
+    heading: player.heading,
+    hour: daynight.hour,
+  };
   try {
-    raw = window.localStorage.getItem(SAVE_KEY);
-  } catch {
+    localStorage.setItem(CFG.saveKey, JSON.stringify(data));
+    return { ok: true, data };
+  } catch (err) {
+    console.warn('save: could not write save', err);
+    return { ok: false, error: String(err) };
+  }
+}
+
+export function loadGame() {
+  try {
+    const raw = localStorage.getItem(CFG.saveKey);
+    if (!raw) return null;
+    const data = JSON.parse(raw);
+    if (!data || data.version !== 1) return null;
+    return data;
+  } catch (err) {
+    console.warn('save: could not read save', err);
     return null;
   }
-  if (!raw) return null;
-  let parsed = null;
-  try {
-    parsed = JSON.parse(raw);
-  } catch {
-    return null;
-  }
-  return asObject(parsed);
 }
 
-export function writeSave(data) {
-  try {
-    window.localStorage.setItem(SAVE_KEY, JSON.stringify(data));
-  } catch {
-    return false;
-  }
+export function applySave(ctx, data) {
+  if (!data) return false;
+  const { player, missions, daynight, police } = ctx;
+  player.cash = data.cash ?? player.cash;
+  player.health = data.health ?? player.health;
+  player.group.position.set(data.position?.x ?? 0, 0, data.position?.z ?? 0);
+  player.heading = data.heading ?? 0;
+  player.group.rotation.y = player.heading;
+  missions.index = data.missionIndex ?? 0;
+  missions.completed = data.missionsCompleted ?? 0;
+  if (daynight && typeof data.hour === 'number') daynight.setHour(data.hour);
+  if (police && typeof data.wanted === 'number') police.setWanted(data.wanted);
   return true;
+}
+
+export function hasSave() {
+  return loadGame() !== null;
+}
+
+// A short human summary of the save for the title menu.
+export function saveSummary() {
+  const data = loadGame();
+  if (!data) return null;
+  return `$${data.cash} — mission ${data.missionIndex + 1}/12 — saved ${data.savedAt.slice(0, 10)}`;
 }
 
 export function clearSave() {
   try {
-    window.localStorage.removeItem(SAVE_KEY);
-  } catch {
-    // Storage can be off: a fresh start then just begins a new game.
+    localStorage.removeItem(CFG.saveKey);
+    return true;
+  } catch (err) {
+    console.warn('save: could not clear save', err);
+    return false;
   }
 }

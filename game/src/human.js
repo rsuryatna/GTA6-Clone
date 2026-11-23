@@ -1,83 +1,220 @@
-// The human body, built as a real human shape — not a cylinder.
-// One module, one job: the geometry every person in the city shares
-// (pedestrians in traffic.js, Jules in player.js), so both read as the
-// same kind of figure. Proportions for a ~1.80 m figure: head 0.24 tall
-// (1/7 of height), legs 0.88 (half the height), shoulders 0.48 wide,
-// waist 0.34, hips 0.40.
+// SOLMARINA — human.js
+// One job: readable people. Every pedestrian is built from separate,
+// proportioned parts — legs that walk, arms that swing, a clothed torso,
+// a head with hair — so a crowd reads as people at screenshot distance,
+// never as capsules or blobs.
 
-import * as THREE from 'three';
+// three.js loads as a classic script in index.html before any module runs.
+const THREE = window.THREE;
+import { WARDROBE } from './config.js';
 
-// The torso as a front silhouette — shoulders wide, waist narrow, hips
-// wide again — extruded with a bevel so its edges are rounded. yBottom
-// is where the piece starts (0.78 for a whole torso, 1.00 for a jacket
-// that leaves the shirt showing below it); grow widens it a little
-// (a jacket sits proud of the shirt). The shape is drawn in the XY
-// plane (front view) and extruded along Z, centred on the body.
-export function torsoGeometry(yBottom, grow) {
-  // Front silhouette landmarks, bottom to top: [height, half-width].
-  const marks = [
-    [0.78, 0.165 + grow],
-    [0.95, 0.150 + grow],
-    [1.08, 0.135 + grow],
-    [1.18, 0.150 + grow],
-    [1.28, 0.175 + grow],
-    [1.38, 0.195 + grow],
-    [1.46, 0.200 + grow],
-  ];
-  function widthAt(y) {
-    for (let i = 0; i < marks.length - 1; i += 1) {
-      if (y >= marks[i][0] && y <= marks[i + 1][0]) {
-        const t = (y - marks[i][0]) / (marks[i + 1][0] - marks[i][0]);
-        return marks[i][1] + (marks[i + 1][1] - marks[i][1]) * t;
-      }
-    }
-    return marks[marks.length - 1][1];
-  }
-  const w0 = widthAt(yBottom);
-  const left = [[-w0, yBottom]];
-  for (const [y, w] of marks) if (y > yBottom) left.push([-w, y]);
-  const right = [];
-  for (let i = marks.length - 1; i >= 0; i -= 1) {
-    if (marks[i][0] > yBottom) right.push([marks[i][1], marks[i][0]]);
-  }
-  right.push([w0, yBottom]);
-  const s = new THREE.Shape();
-  s.moveTo(left[0][0], left[0][1]);
-  for (let i = 1; i < left.length - 1; i += 1) {
-    const mx = (left[i][0] + left[i + 1][0]) / 2;
-    const my = (left[i][1] + left[i + 1][1]) / 2;
-    s.quadraticCurveTo(left[i][0], left[i][1], mx, my);
-  }
-  s.lineTo(left[left.length - 1][0], left[left.length - 1][1]);
-  s.lineTo(right[0][0], right[0][1]);
-  for (let i = 1; i < right.length - 1; i += 1) {
-    const mx = (right[i][0] + right[i + 1][0]) / 2;
-    const my = (right[i][1] + right[i + 1][1]) / 2;
-    s.quadraticCurveTo(right[i][0], right[i][1], mx, my);
-  }
-  s.lineTo(right[right.length - 1][0], right[right.length - 1][1]);
-  s.closePath();
-  const geo = new THREE.ExtrudeGeometry(s, {
-    depth: 0.16, bevelEnabled: true, bevelThickness: 0.04,
-    bevelSize: 0.035, bevelSegments: 2, steps: 1,
-  });
-  geo.translate(0, 0, -0.08);
-  return geo;
+function limb(w, h, d, color) {
+  const m = new THREE.Mesh(
+    new THREE.BoxGeometry(w, h, d),
+    new THREE.MeshStandardMaterial({ color, roughness: 0.9 }),
+  );
+  m.castShadow = true;
+  return m;
 }
 
-// A limb segment that tapers from its top (at the joint) to its bottom,
-// translated so it hangs down from a pivot at y=0. A box, not a tube:
-// flat faces, a shaped silhouette, a visible joint where two meet.
-export function taperedLimb(wTop, wBottom, h, dTop, dBottom) {
-  const geo = new THREE.BoxGeometry(wBottom, h, dBottom);
-  const pos = geo.attributes.position;
-  for (let i = 0; i < pos.count; i += 1) {
-    if (pos.getY(i) > 0) {
-      pos.setX(i, pos.getX(i) * (wTop / wBottom));
-      pos.setZ(i, pos.getZ(i) * (dTop / dBottom));
-    }
+export function makePedestrian(rng, opts = {}) {
+  const look = opts.look || rng.pick(WARDROBE);
+  const height = rng.range(1.62, 1.92);
+  const s = height / 1.78;
+  const g = new THREE.Group();
+  g.name = 'Pedestrian';
+
+  const skin = new THREE.MeshStandardMaterial({ color: look.skin, roughness: 0.8 });
+  const shirt = new THREE.MeshStandardMaterial({ color: look.shirt, roughness: 0.9 });
+  const pants = new THREE.MeshStandardMaterial({ color: look.pants, roughness: 0.95 });
+  const hairMat = new THREE.MeshStandardMaterial({ color: look.hair, roughness: 1 });
+
+  // Legs: two separate limbs, pivoted at the hip so they swing.
+  const legL = new THREE.Group();
+  const legR = new THREE.Group();
+  legL.position.set(-0.11 * s, 0.86 * s, 0);
+  legR.position.set(0.11 * s, 0.86 * s, 0);
+  const legLMesh = limb(0.16 * s, 0.84 * s, 0.18 * s, look.pants);
+  legLMesh.position.y = -0.42 * s;
+  const legRMesh = limb(0.16 * s, 0.84 * s, 0.18 * s, look.pants);
+  legRMesh.position.y = -0.42 * s;
+  legL.add(legLMesh);
+  legR.add(legRMesh);
+  // Shoes, so the feet read at street level.
+  const shoeMat = new THREE.MeshStandardMaterial({ color: 0x1c1c1c, roughness: 0.7 });
+  for (const leg of [legL, legR]) {
+    const shoe = new THREE.Mesh(new THREE.BoxGeometry(0.17 * s, 0.09 * s, 0.3 * s), shoeMat);
+    shoe.position.set(0, -0.84 * s, 0.05 * s);
+    leg.add(shoe);
   }
-  geo.translate(0, -h / 2, 0);
-  geo.computeVertexNormals();
-  return geo;
+  g.add(legL, legR);
+
+  // Torso: shirt, with a jacket stripe for some walkers.
+  const torso = new THREE.Mesh(new THREE.BoxGeometry(0.46 * s, 0.58 * s, 0.24 * s), shirt);
+  torso.position.y = 1.15 * s;
+  torso.castShadow = true;
+  g.add(torso);
+  if (rng.chance(0.4)) {
+    const jacket = new THREE.Mesh(
+      new THREE.BoxGeometry(0.48 * s, 0.2 * s, 0.26 * s),
+      new THREE.MeshStandardMaterial({ color: rng.pick([0x222831, 0x6b4423, 0x274156]), roughness: 0.9 }),
+    );
+    jacket.position.y = 1.32 * s;
+    g.add(jacket);
+  }
+
+  // Arms: pivoted at the shoulder, swinging opposite the legs.
+  const armL = new THREE.Group();
+  const armR = new THREE.Group();
+  armL.position.set(-0.29 * s, 1.38 * s, 0);
+  armR.position.set(0.29 * s, 1.38 * s, 0);
+  const armLMesh = limb(0.12 * s, 0.56 * s, 0.13 * s, look.shirt);
+  armLMesh.position.y = -0.28 * s;
+  const armRMesh = limb(0.12 * s, 0.56 * s, 0.13 * s, look.shirt);
+  armRMesh.position.y = -0.28 * s;
+  armL.add(armLMesh);
+  armR.add(armRMesh);
+  // Hands in skin tone.
+  for (const arm of [armL, armR]) {
+    const hand = new THREE.Mesh(new THREE.BoxGeometry(0.11 * s, 0.12 * s, 0.12 * s), skin);
+    hand.position.y = -0.58 * s;
+    arm.add(hand);
+  }
+  g.add(armL, armR);
+
+  // Head: skin sphere, hair cap on top, so hair reads from every angle.
+  const head = new THREE.Mesh(new THREE.SphereGeometry(0.15 * s, 12, 10), skin);
+  head.position.y = 1.62 * s;
+  head.castShadow = true;
+  g.add(head);
+  const hairStyle = rng.pick(['cap', 'bun', 'short', 'long']);
+  if (hairStyle === 'cap') {
+    const hair = new THREE.Mesh(
+      new THREE.SphereGeometry(0.155 * s, 12, 8, 0, Math.PI * 2, 0, Math.PI * 0.55),
+      hairMat,
+    );
+    hair.position.y = 1.65 * s;
+    g.add(hair);
+  } else if (hairStyle === 'bun') {
+    const hair = new THREE.Mesh(new THREE.SphereGeometry(0.15 * s, 10, 8), hairMat);
+    hair.position.y = 1.66 * s;
+    hair.scale.set(1, 0.7, 1);
+    g.add(hair);
+    const bun = new THREE.Mesh(new THREE.SphereGeometry(0.07 * s, 8, 6), hairMat);
+    bun.position.set(0, 1.78 * s, -0.1 * s);
+    g.add(bun);
+  } else if (hairStyle === 'long') {
+    const hair = new THREE.Mesh(new THREE.BoxGeometry(0.3 * s, 0.34 * s, 0.1 * s), hairMat);
+    hair.position.set(0, 1.58 * s, -0.12 * s);
+    g.add(hair);
+    const top = new THREE.Mesh(
+      new THREE.SphereGeometry(0.155 * s, 12, 8, 0, Math.PI * 2, 0, Math.PI * 0.5),
+      hairMat,
+    );
+    top.position.y = 1.65 * s;
+    g.add(top);
+  } else {
+    const hair = new THREE.Mesh(
+      new THREE.SphereGeometry(0.152 * s, 12, 8, 0, Math.PI * 2, 0, Math.PI * 0.45),
+      hairMat,
+    );
+    hair.position.y = 1.64 * s;
+    g.add(hair);
+  }
+
+  // A few carry a bag, a phone or a coffee cup — street life, not mannequins.
+  if (rng.chance(0.3)) {
+    const bag = new THREE.Mesh(
+      new THREE.BoxGeometry(0.2 * s, 0.26 * s, 0.08 * s),
+      new THREE.MeshStandardMaterial({ color: rng.pick([0x8a5a2b, 0x222222, 0xef476f]), roughness: 0.8 }),
+    );
+    bag.position.set(0.26 * s, 1.05 * s, 0);
+    g.add(bag);
+  }
+
+  return {
+    group: g,
+    legL,
+    legR,
+    armL,
+    armR,
+    head,
+    height,
+    phase: rng.float() * Math.PI * 2,
+    walkSpeed: rng.range(1.1, 1.9),
+    // Advance the walk cycle; speed 0 idles with a slight breathing sway.
+    animate(dt, moving) {
+      this.phase += dt * (moving ? 9 : 1.6) * (moving ? this.walkSpeed / 1.5 : 1);
+      const swing = moving ? Math.sin(this.phase) * 0.55 : Math.sin(this.phase) * 0.03;
+      this.legL.rotation.x = swing;
+      this.legR.rotation.x = -swing;
+      this.armL.rotation.x = -swing * 0.8;
+      this.armR.rotation.x = swing * 0.8;
+      this.group.position.y = moving ? Math.abs(Math.cos(this.phase)) * 0.04 : 0;
+    },
+  };
+}
+
+export function createCrowd(scene, world, rng, count) {
+  const peds = [];
+  for (let i = 0; i < count; i++) {
+    const ped = makePedestrian(rng);
+    const spot = world.randomRoadPoint(rng);
+    // Walkers keep to the sidewalk edge, just off the asphalt.
+    const onSidewalk = rng.chance(0.7);
+    const off = onSidewalk ? rng.pick([-1, 1]) * (8.5 + rng.range(0, 2.5)) : rng.range(-4, 4);
+    ped.group.position.set(spot.x + off, 0, spot.z);
+    ped.group.rotation.y = rng.float() * Math.PI * 2;
+    ped.target = null;
+    ped.wait = rng.range(0, 3);
+    scene.add(ped.group);
+    peds.push(ped);
+  }
+  return {
+    peds,
+    update(dt, world) {
+      for (const ped of peds) {
+        if (ped.wait > 0) {
+          ped.wait -= dt;
+          ped.animate(dt, false);
+          continue;
+        }
+        if (!ped.target) {
+          const spot = world.randomRoadPoint(rng);
+          ped.target = { x: spot.x, z: spot.z };
+        }
+        const dx = ped.target.x - ped.group.position.x;
+        const dz = ped.target.z - ped.group.position.z;
+        const dist = Math.hypot(dx, dz);
+        if (dist < 1.5) {
+          ped.target = null;
+          ped.wait = rng.range(1, 6);
+          continue;
+        }
+        const heading = Math.atan2(dx, dz);
+        ped.group.rotation.y += (heading - ped.group.rotation.y) * Math.min(1, dt * 4);
+        ped.group.position.x += Math.sin(ped.group.rotation.y) * ped.walkSpeed * dt;
+        ped.group.position.z += Math.cos(ped.group.rotation.y) * ped.walkSpeed * dt;
+        // Stay inside the city.
+        ped.group.position.x = Math.max(world.bounds.minX, Math.min(world.bounds.maxX, ped.group.position.x));
+        ped.group.position.z = Math.max(world.bounds.minZ, Math.min(world.bounds.maxZ, ped.group.position.z));
+        ped.animate(dt, true);
+      }
+    },
+    // Teleport a slice of the crowd near a point — used to stage screenshots.
+    gatherNear(x, z, radius, n) {
+      let placed = 0;
+      for (const ped of peds) {
+        if (placed >= n) break;
+        const a = rng.float() * Math.PI * 2;
+        const d = Math.sqrt(rng.float()) * radius;
+        ped.group.position.set(x + Math.cos(a) * d, 0, z + Math.sin(a) * d);
+        ped.group.rotation.y = rng.float() * Math.PI * 2;
+        ped.target = null;
+        ped.wait = rng.range(0.5, 2);
+        placed++;
+      }
+      return placed;
+    },
+  };
 }

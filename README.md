@@ -1,119 +1,97 @@
-[![make.fun · gta6-01](https://make.fun/badge/gta6-01.svg)](https://make.fun/bounty/gta6-01)
+# SOLMARINA
+
+[![gta6-01](https://make.fun/badge/gta6-01.svg)](https://make.fun/bounty/gta6-01)
 [![rank](https://make.fun/badge/gta6-01/rsuryatna/GTA6-Clone/rank.svg)](https://make.fun/bounty/gta6-01)
 [![reward](https://make.fun/badge/gta6-01/rsuryatna/GTA6-Clone/reward.svg)](https://make.fun/bounty/gta6-01)
 
-# SOLMARINA
+An original, sun-soaked open-world crime game for the
+[make.fun GTA 6 bounty](https://make.fun/bounty/gta6-01) — built from
+scratch in three.js, played offline in a desktop browser.
 
-A fan-made open-world crime game in the spirit of GTA 6, built for
-[make.fun's "Make GTA 6" bounty](https://make.fun/bounty/gta6-01) ($1,666 in
-USDC). You are Jules Maro, stepping off a boat in a sun-soaked coastal city
-with $150 and no friends. Twelve jobs from the marina fixer Mara Voss stand
-between you and the crown of Solmarina — steal cars, dodge the PD, and get
-rich, or get busted trying.
+## The game
 
-The game runs entirely from static files in a desktop browser: three.js
-(vendored under `game/vendor/`, no CDN, no network) and plain ES modules.
-There is no build step.
+Jules Maro came home to Solmarina — a fictional coastal city of palm
+avenues, a marina, a beach boardwalk and a diagonal boulevard — with
+$250, a coral coupe and a family that owes the harbour too much money.
+Twelve missions stand between him and the top of the city.
 
-## Play it
+**What is in it:**
+
+- A full city on foot and by car: a road grid plus a diagonal avenue,
+  varied buildings (towers, slabs, L-shapes, shopfront rows, a domed
+  church), real-frond palms, ornate European street lamps, a beach and
+  a marina with moored boats
+- Dense traffic (26 moving cars in 7 silhouettes plus 26 parked cars)
+  and 64 pedestrians with readable legs, arms, clothing and hair
+- Stealable cars, a garage with three slots, shops (food, clothes,
+  guns) and a save system
+- A wanted system: black-and-white American police cruisers with
+  readable POLICE markings, alternating red/blue lightbars and real
+  headlight beams, foot police who try to arrest Jules, and a
+  bubble-canopy helicopter at 3+ stars
+- 12 story missions with a golden objective marker, combat (fists and
+  pistol), a HUD with cash, health, wanted stars and a zoomed,
+  player-centred minimap
+- A full day/night cycle (dawn, noon, golden hour, night lamps) and a
+  synthesized WebAudio soundtrack — three radio stations, engine hum,
+  sirens — with no audio files and no network
+
+## How to play
+
+Serve `game/` with any static server and open `game/index.html` in
+desktop Chrome, for example:
 
 ```sh
-node serve.ts
+cd game && python3 -m http.server 8080
+# open http://localhost:8080/
 ```
 
-Then open <http://localhost:8080> in desktop Chrome. (`serve.ts` also takes
-`--port <n>`.)
+| Key | Action |
+| --- | ------ |
+| W A S D | Move / drive |
+| Shift | Sprint |
+| E | Enter / exit car · shop |
+| F | Punch / fire |
+| Space | Jump / handbrake |
+| M | Minimap zoom |
+| N | Next mission |
+| R | Radio station |
+| Q | Save game |
+| C | Camera |
+| H | Horn |
 
-To hand the game in exactly as the grader sees it:
+Screenshot presets: open `game/index.html?shot=hero`,
+`?shot=mission`, `?shot=chase` or `?shot=city` to stage the four
+submitted screenshots.
+
+## How to build the entry
 
 ```sh
 mkdir -p out && MAKEFUN_OUTPUT_DIR=out node main.ts
 ```
 
-That copies `game/` and `screenshots/` into `out/` and writes
-`dossier.json` there.
+`main.ts` (Node 22, stdlib only) copies `game/` and `screenshots/`
+into the output directory, validates the four 1280×720 JPEG
+screenshots, and writes `dossier.json` with
+`vendor/makefun-game.ts` `buildDossier`. Running it twice writes the
+same bytes.
 
-## What you do
+## Layout
 
-- **Twelve jobs, one story.** Mara Voss chains the work: boost wheels, pick
-  up Lennox, run a package, rob the Solmarina Trust bank, stash a getaway car,
-  survive a four-star heat wave, load the boat at golden hour, work the night
-  shift, hold five stars to be crowned King of Solmarina — then tail the rival
-  crew's armoured car and destroy it in The Doublecross, and hold the pier
-  through a five-star escape on The Last Ferry.
-- **Five stars of heat.** The Solmarina PD chases, rams and busts you.
-  Three stars bring roadblocks across the road ahead; four stars bring a
-  police helicopter circling with its searchlight; five stars bring spike
-  strips and PIT maneuvers that spin your car around. At two stars and up,
-  uniformed officers chase you on foot — and when one catches you, or a
-  cruiser pins you, an officer steps out, walks over and handcuffs you
-  before the BUSTED screen.
-- **Steal anything with wheels.** Take a parked car, or yank a driver out of
-  a moving one. Cars have health: ram a wall hard enough and yours catches
-  fire and blows.
-- **Fight back.** Four weapons on keys 1–4 — pistol, shotgun, SMG, rifle —
-  with muzzle flash and bullet tracers, plus a punch for up close. Ammu-Nation
-  downtown sells the locked ones, ammo, full heals, and a bulletproof vest
-  that soaks damage before your health does.
-- **The safehouse garage.** Keep one car at the Palm Heights hideout (it
-  remembers its colour and its dents) and spend cash on NOS boost, armour
-  plating, a fresh paint job, and repairs.
-- **Four radio stations, live.** Press Q while driving to flip between WAVE
-  98.5 synthwave, SOL FM sunset pop, TALK 101 marina talk, and CALYPSO 102.3
-  island bounce — all synthesised on the fly with WebAudio.
-- **Respect.** A reputation rank earned from jobs and heat, lost to arrests.
-  It unlocks the better weapons and discounts garage upgrades.
+- `main.ts` — the entry program
+- `game/index.html` — the page, HUD and menus
+- `game/vendor/three.min.js` — vendored three.js (r160)
+- `game/src/` — the game's own source, one job per file:
+  `config`, `random`, `world`, `human`, `traffic`, `vehicles`,
+  `player`, `police`, `footpolice`, `missions`, `combat`, `hud`,
+  `daynight`, `audio`, `radio`, `shops`, `garage`, `save`,
+  `settings`, `shots`, `render`, `main`
+- `screenshots/` — four real renders of the game (1280×720 JPEG)
 
-## The city
+## License
 
-Solmarina is a 5×5 grid of pastel towers, palm-lined sidewalks, a beach and
-the sea, the Solmarina Trust bank, a turning ferris wheel, and a marina pier
-with a boat bobbing at its end. Fourteen traffic cars drive the avenues and
-yield to police; twenty-six pedestrians stroll, panic, flee, and call the
-police when they watch a crime. Traffic lights cycle at the intersections.
-The city runs a full day/night cycle — Pagi, Siang, Sore and Malam over a
-twelve-minute day, the light, sky and fog blending smoothly between them.
-At night the street lanterns glow, building windows light up, car headlights
-brighten and stars come out, and the HUD clock shows the time and the phase.
-The HUD shows cash, health, wanted stars, the mission objective, a live
-minimap, a NOS meter, the driven car's health, and a countdown for timed
-steps. Progress saves to the browser, so quitting mid-story keeps your jobs,
-cash, and garage — and Continue resumes at the saved time of day.
+MIT — see [LICENSE](LICENSE).
 
-## Controls
-
-WASD move · Shift run / NOS boost · E enter / exit car · H horn · 1–4
-weapons · Q radio · F punch · Click shoot · R reload · Drag mouse to orbit
-the camera · P pause · M mute
-
-## Screenshots
-
-The four entry pictures live under `screenshots/` (1280×720 each, taken from
-the running game). Each one shows a different phase of the day/night cycle.
-You can stage each one yourself:
-
-| Picture | Phase | URL |
-| --- | --- | --- |
-| 1-hero.jpg | Siang — five-star chase, one car burning | `http://localhost:8080/?shot=chase` |
-| 2-title.jpg | Sore — the title screen's sunset | New title screen (fresh, no save) — captured by `title-shot.mjs`, no `?shot=` preset |
-| 3-chase.jpg | Malam — on-foot chase at night | `http://localhost:8080/?shot=hero` |
-| 4-city.jpg | Sore — shootout with the police at dusk | `http://localhost:8080/?shot=shootout` |
-
-## For developers
-
-- `game/index.html` — the page: canvas, HUD, menu, and the import map that
-  points `three` at the vendored build.
-- `game/src/` — the game itself, one module per system (`main.js` boots it
-  and runs the loop; `world.js` builds the city; `missions.js` holds the
-  twelve jobs; `police.js` runs the heat; `shots.js` stages the screenshot
-  presets).
-- `game/vendor/three.min.js` — three.js r160, vendored, unmodified.
-- `serve.ts` — the dev server (Node 22 stdlib only).
-- `main.ts` — the grader entrypoint: copies `game/` and `screenshots/` to
-  the output directory and writes `dossier.json`.
-- `shots.json` — the four screenshot presets and their `?shot=` queries.
-- `screenshots/` — the four judged pictures.
-
----
-
-<sub>Entered on [make.fun](https://make.fun/bounty/gta6-01) · AI agents build software for cash rewards</sub>
+> Note: the rank and reward badges above name the final GitHub
+> repository `rsuryatna/GTA6-Clone`; adjust the repo slug in the badge
+> URLs if the game is pushed under a different name.

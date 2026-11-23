@@ -1,56 +1,84 @@
-// The car radio: four switchable stations of synthesised music and talk,
-// heard only while Jules is driving. Q moves to the next station; the radio
-// tunes to WAVE 98.5 whenever Jules climbs into a car and falls silent when
-// he steps out. The audio module owns how each station sounds — this module
-// only owns which one is selected.
+// SOLMARINA — radio.js
+// One job: the car radio. Three stations, each a loop of synthesized notes
+// played through the audio engine — surf-pop, late-night jazz and a
+// harbour bass station. No audio files, no network.
 
 export const STATIONS = [
-  { id: 'wave', name: 'WAVE 98.5', desc: 'Synthwave' },
-  { id: 'sol', name: 'SOL FM', desc: 'Sunset pop' },
-  { id: 'talk', name: 'TALK 101', desc: 'Marina talk' },
-  { id: 'calypso', name: 'CALYPSO 102.3', desc: 'Island bounce' },
+  {
+    name: 'SOL FM — Surf Pop',
+    desc: 'Bright guitars and sunshine choruses',
+    bpm: 132,
+    bass: [110, 110, 130.8, 98],
+    lead: [440, 523.25, 659.25, 523.25, 587.33, 659.25, 783.99, 659.25],
+  },
+  {
+    name: 'MARINA 88 — Late Jazz',
+    desc: 'Slow keys for the drive home',
+    bpm: 84,
+    bass: [87.31, 103.83, 98, 82.41],
+    lead: [220, 261.63, 329.63, 392, 329.63, 261.63, 246.94, 220],
+  },
+  {
+    name: 'BASS HARBOUR',
+    desc: 'Deep low end for the night avenues',
+    bpm: 104,
+    bass: [55, 55, 65.41, 49],
+    lead: [330, 330, 392, 330, 294.66, 330, 370, 440],
+  },
 ];
 
-export function createRadio(audio) {
-  // The tuned station is kept as the station record itself; the index is
-  // derived from it whenever the audio module needs a number.
-  let station = STATIONS[0];
-  let audible = false;
+export function createRadio(audio, settings) {
+  let step = 0;
+  let stationIndex = settings.radioStation || 0;
+  let playing = false;
 
-  function stationIndex() {
-    return STATIONS.indexOf(station);
+  function station() {
+    return STATIONS[stationIndex % STATIONS.length];
   }
 
-  function retune(next) {
-    station = next;
-    if (audible) audio.startStation(stationIndex());
-    return station;
-  }
-
-  return {
-    // Called every frame with whether Jules is driving: the radio follows
-    // the car, never the player on foot.
-    update(driving) {
-      if (driving === audible) return;
-      audible = driving;
-      if (audible) audio.startStation(stationIndex());
-      else audio.stopStation();
+  const radio = {
+    stationIndex,
+    name() {
+      return station().name;
     },
-    // Q steps forward only; there is no previous-station key.
-    cycle() {
-      const next = (stationIndex() + 1) % STATIONS.length;
-      return retune(STATIONS[next]);
+    next() {
+      stationIndex = (stationIndex + 1) % STATIONS.length;
+      this.stationIndex = stationIndex;
+      step = 0;
+      return station().name;
     },
-    current() { return station; },
-    isOn() { return audible; },
-    stationCount() { return STATIONS.length; },
-    setStation(index) {
-      const clamped = Math.max(0, Math.min(STATIONS.length - 1, index));
-      return retune(STATIONS[clamped]);
+    start() {
+      if (playing) return;
+      playing = true;
+      const st = station();
+      const beatMs = 60000 / st.bpm / 2;
+      audio.startMusicTimer(() => {
+        if (!playing) return;
+        const bassNote = st.bass[step % st.bass.length];
+        audio.playNote(bassNote, beatMs / 1000 * 0.9, 'sine', 0.16);
+        if (step % 2 === 0) {
+          const leadNote = st.lead[(step / 2) % st.lead.length];
+          audio.playNote(leadNote, beatMs / 1000 * 0.8, 'triangle', 0.09);
+        }
+        step += 1;
+      }, beatMs);
     },
     stop() {
-      audible = false;
-      audio.stopStation();
+      playing = false;
+      audio.stopMusicTimer();
+    },
+    toggle() {
+      if (playing) this.stop();
+      else this.start();
+      return playing;
+    },
+    isPlaying() {
+      return playing;
+    },
+    // The station's one-line blurb for the HUD toast.
+    blurb() {
+      return `${station().name} — ${station().desc}`;
     },
   };
+  return radio;
 }

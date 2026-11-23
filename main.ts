@@ -1,96 +1,101 @@
-// SOLMARINA hands itself in — the grader entrypoint (Node 22, stdlib only).
-//
-// The playable game is plain static files under game/: an index.html, ES
-// modules, and a vendored three.js, with no build step and no network. The
-// four judged pictures live under screenshots/. This program copies both
-// folders into the grader's output directory and writes dossier.json there
-// with the vendored make.fun library, which is the summary the judge reads.
-// It plays no part of the game itself: the city, the twelve jobs and the
-// pictures are all produced by the files it copies.
-//
-// Run it outside the grader with MAKEFUN_OUTPUT_DIR standing in for /output:
-//   mkdir -p out && MAKEFUN_OUTPUT_DIR=out node main.ts
-// The program runs twice and must write identical bytes both times. Copying
-// files and building the dossier from them is deterministic, so it does.
-import { cpSync, existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
-import { join } from "node:path";
-import { fileURLToPath } from "node:url";
-import { buildDossier } from "./vendor/makefun-game.ts";
+// SOLMARINA — main.ts
+// The entry program for the make.fun gta6-01 bounty (Node 22, stdlib only).
+// It copies game/ and screenshots/ from this repository into the output
+// directory (MAKEFUN_OUTPUT_DIR, default /output), validates the four
+// screenshots, and writes /output/dossier.json with buildDossier from
+// vendor/makefun-game.ts. Running it twice writes the same bytes.
 
-// The repository root (this file's folder) and the grader's output folder.
-const repoRoot = fileURLToPath(new URL(".", import.meta.url));
-const destDir = process.env.MAKEFUN_OUTPUT_DIR ?? "/output";
+import { cpSync, existsSync, mkdirSync, readdirSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs';
+import { join } from 'node:path';
+import { buildDossier } from './vendor/makefun-game.ts';
 
-// The four pictures the judge looks at, in the order shots.json lists them.
-const EXPECTED_SHOTS = ["1-hero.jpg", "2-title.jpg", "3-chase.jpg", "4-city.jpg"];
+const OUTPUT_DIR = process.env.MAKEFUN_OUTPUT_DIR || '/output';
+const REPO_DIR = new URL('.', import.meta.url).pathname;
+const EXPECTED_SHOTS = ['1-hero.jpg', '2-mission.jpg', '3-chase.jpg', '4-city.jpg'];
+const SHOT_WIDTH = 1280;
+const SHOT_HEIGHT = 720;
 
-function fail(message: string): never {
-  throw new Error(`main.ts: ${message}`);
-}
-
-// Copy the whole game folder, then the screenshots folder, into the output
-// directory. Refuse early, with a readable error, when the game is absent.
-mkdirSync(destDir, { recursive: true });
-const gameSrc = join(repoRoot, "game");
-if (!existsSync(gameSrc)) fail(`game/ not found next to main.ts (${repoRoot}) — nothing to hand in.`);
-cpSync(gameSrc, join(destDir, "game"), { recursive: true });
-
-const shotsSrc = join(repoRoot, "screenshots");
-mkdirSync(join(destDir, "screenshots"), { recursive: true });
-if (existsSync(shotsSrc)) {
-  cpSync(shotsSrc, join(destDir, "screenshots"), { recursive: true });
-}
-
-// Read a JPEG's pixel size from its frame header (SOF0/SOF2), without a
-// decoder: the two bytes after the length and precision fields are the
-// height, then the width. Returns null when the file is not a JPEG.
-function jpegSize(bytes: Buffer): { width: number; height: number } | null {
-  if (bytes.length < 4 || bytes[0] !== 0xff || bytes[1] !== 0xd8) return null;
-  let at = 2;
-  while (at + 9 < bytes.length) {
-    if (bytes[at] !== 0xff) return null;
-    const marker = bytes[at + 1];
-    const length = (bytes[at + 2] << 8) | bytes[at + 3];
-    if (marker >= 0xc0 && marker <= 0xcf && marker !== 0xc4 && marker !== 0xc8 && marker !== 0xcc) {
-      return { height: (bytes[at + 5] << 8) | bytes[at + 6], width: (bytes[at + 7] << 8) | bytes[at + 8] };
+// Read a JPEG's pixel size from its SOF0/SOF1/SOF2 marker (stdlib only,
+// no image library): scan markers after the SOI, skip segments by length.
+function jpegSize(bytes: Buffer): { width: number; height: number } {
+  if (bytes.length < 4 || bytes[0] !== 0xff || bytes[1] !== 0xd8 || bytes[2] !== 0xff) {
+    throw new Error('not a JPEG (missing SOI marker)');
+  }
+  let i = 2;
+  while (i + 9 < bytes.length) {
+    if (bytes[i] !== 0xff) { i += 1; continue; }
+    const marker = bytes[i + 1];
+    if (marker === 0xd8 || marker === 0x01 || (marker >= 0xd0 && marker <= 0xd7)) {
+      i += 2;
+      continue;
     }
-    at += 2 + length;
+    if (marker === 0xda) break; // SOS: the scan data follows, no more headers.
+    const length = bytes.readUInt16BE(i + 2);
+    if (marker >= 0xc0 && marker <= 0xcf && marker !== 0xc4 && marker !== 0xc8 && marker !== 0xcc) {
+      const height = bytes.readUInt16BE(i + 5);
+      const width = bytes.readUInt16BE(i + 7);
+      return { width, height };
+    }
+    i += 2 + length;
   }
-  return null;
+  throw new Error('no SOF marker found in JPEG');
 }
 
-// Every expected picture must be there, and the folder must hold no extra
-// picture the judge did not ask for — a stray file would be judged too.
-const shotNames = readdirSync(join(destDir, "screenshots")).sort();
-for (const name of EXPECTED_SHOTS) {
-  if (!shotNames.includes(name)) fail(`screenshots/${name} is missing — the judge needs all four pictures.`);
-}
-const extra = shotNames.filter((name) => !EXPECTED_SHOTS.includes(name));
-if (extra.length > 0) fail(`screenshots/ holds unexpected files (${extra.join(", ")}) — remove them.`);
-
-// Each picture must be a 1280x720 capture of the running game. A wrong size
-// means the shot was taken at the wrong viewport and would be judged down.
-for (const name of EXPECTED_SHOTS) {
-  const size = jpegSize(readFileSync(join(destDir, "screenshots", name)));
-  if (size === null) fail(`screenshots/${name} is not a JPEG — retake it from the running game.`);
-  if (size.width !== 1280 || size.height !== 720) {
-    fail(`screenshots/${name} is ${size.width}x${size.height}, not 1280x720 — retake it.`);
+function validateScreenshots(shotsDir: string): void {
+  const names = readdirSync(shotsDir).filter((n) => !n.startsWith('.')).sort();
+  const missing = EXPECTED_SHOTS.filter((n) => !names.includes(n));
+  if (missing.length > 0) {
+    throw new Error(`screenshots/: missing ${missing.join(', ')}`);
+  }
+  const extra = names.filter((n) => !EXPECTED_SHOTS.includes(n));
+  if (extra.length > 0) {
+    throw new Error(`screenshots/: unexpected files ${extra.join(', ')} (exactly 4 screenshots)`);
+  }
+  for (const name of EXPECTED_SHOTS) {
+    const path = join(shotsDir, name);
+    const bytes = readFileSync(path);
+    if (bytes.length > 262144) {
+      throw new Error(`screenshots/${name}: ${bytes.length} bytes, over the 256 KiB cap`);
+    }
+    const size = jpegSize(bytes);
+    if (size.width !== SHOT_WIDTH || size.height !== SHOT_HEIGHT) {
+      throw new Error(
+        `screenshots/${name}: ${size.width}x${size.height}, expected ${SHOT_WIDTH}x${SHOT_HEIGHT}`,
+      );
+    }
   }
 }
 
-// The scorer's caps, mirrored here so a local run refuses what the sealed
-// scorer would refuse: at most 4 screenshots, each at most 256 KiB; game/ at
-// most 993 files and 48 MiB in all, with no path over 1000 bytes. Only
-// text_max_bytes shapes the dossier's bytes; the rest guard the entry.
-const dossier = buildDossier(destDir, {
-  text_max_bytes: 163840,
-  screenshots: { max: 4, max_bytes: 262144 },
-  game_max_files: 993,
-  game_max_bytes: 50331648,
-  game_path_max_bytes: 1000,
-});
-writeFileSync(join(destDir, "dossier.json"), dossier);
+function main(): void {
+  const gameDir = join(REPO_DIR, 'game');
+  const shotsDir = join(REPO_DIR, 'screenshots');
+  if (!existsSync(gameDir) || !statSync(gameDir).isDirectory()) {
+    throw new Error('game/: no such directory');
+  }
+  if (!existsSync(join(gameDir, 'index.html'))) {
+    throw new Error('game/index.html: no such file');
+  }
+  validateScreenshots(shotsDir);
 
-console.log(
-  `SOLMARINA handed in: game/ + ${EXPECTED_SHOTS.length} screenshots + dossier.json -> ${destDir}`,
-);
+  mkdirSync(OUTPUT_DIR, { recursive: true });
+  // A clean output every run, so a second run writes the same bytes.
+  for (const entry of readdirSync(OUTPUT_DIR)) {
+    rmSync(join(OUTPUT_DIR, entry), { recursive: true, force: true });
+  }
+  cpSync(gameDir, join(OUTPUT_DIR, 'game'), { recursive: true });
+  cpSync(shotsDir, join(OUTPUT_DIR, 'screenshots'), { recursive: true });
+
+  const dossier = buildDossier(OUTPUT_DIR, {
+    text_max_bytes: 163840,
+    screenshots: { max: 4, max_bytes: 262144 },
+    game_max_files: 993,
+    game_max_bytes: 50331648,
+    game_path_max_bytes: 1000,
+  });
+  writeFileSync(join(OUTPUT_DIR, 'dossier.json'), dossier);
+  console.log(`SOLMARINA: wrote ${OUTPUT_DIR}/dossier.json (${dossier.length} bytes)`);
+  console.log(`SOLMARINA: 4 screenshots validated at ${SHOT_WIDTH}x${SHOT_HEIGHT}`);
+  console.log('SOLMARINA: deterministic — a second run writes the same bytes');
+}
+
+main();
